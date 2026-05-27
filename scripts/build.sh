@@ -18,6 +18,11 @@ doc/00_llm_process/tool_expert
 .codex/skills/sp_dev/SKILL.md
 .gemini/commands/dev.toml
 .gemini/commands/sp_dev.toml
+package.json
+cli/spipe.js
+mcp/server.js
+plugin/.codex-plugin/plugin.json
+plugin/manifest.sdn
 plugin
 mcp
 cli
@@ -35,5 +40,11 @@ if [ "$missing" -ne 0 ]; then
   echo "spipe_build_status=fail missing=$missing"
   exit 1
 fi
+
+node --check cli/spipe.js >/dev/null
+node --check mcp/server.js >/dev/null
+node cli/spipe.js info >/dev/null
+node cli/spipe.js experts >/dev/null
+node cli/spipe.js doctor ../.. >/dev/null
 
 echo "spipe_build_status=pass"

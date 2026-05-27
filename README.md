@@ -17,6 +17,20 @@ scripts, and integration docs that can be mounted into a host repository.
   MCP, and CLI code.
 - `scripts/` - host-repo setup and link scripts.
 
+## CLI and MCP
+
+The package exposes two dependency-free Node entrypoints:
+
+```sh
+node cli/spipe.js info
+node cli/spipe.js experts
+node cli/spipe.js doctor ../..
+node mcp/server.js
+```
+
+When installed as an npm-style package, the binaries are `spipe` and
+`spipe-mcp`.
+
 ## Build Check
 
 Run the package layout check before publishing or updating a host submodule
