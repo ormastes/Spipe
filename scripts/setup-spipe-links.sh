@@ -35,7 +35,7 @@ done
 link_one() {
   rel="$1"
   source="${MODULE_ROOT}/${rel}"
-  link_target="../../../.spipe/spipe/${rel}"
+  link_target="../../.spipe/spipe/${rel}"
   target="${HOST_ROOT}/${rel}"
 
   if [ ! -e "$source" ]; then
