@@ -17,6 +17,15 @@ scripts, and integration docs that can be mounted into a host repository.
   MCP, and CLI code.
 - `scripts/` - host-repo setup and link scripts.
 
+## Build Check
+
+Run the package layout check before publishing or updating a host submodule
+pointer:
+
+```sh
+sh scripts/build.sh
+```
+
 ## Host Setup
 
 From a host repository with this project mounted at `.spipe/spipe`:
