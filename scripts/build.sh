@@ -10,6 +10,7 @@ doc/00_llm_process/spipe/skill.md
 doc/00_llm_process/skill_command
 doc/00_llm_process/template
 doc/00_llm_process/project_expert
+doc/00_llm_process/project_expert/subproject_links.example.sdn
 doc/00_llm_process/domain_expert
 doc/00_llm_process/tool_expert
 .claude/skills/spipe.md

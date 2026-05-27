@@ -19,6 +19,7 @@ Links reusable SPipe process surfaces from .spipe/spipe into the host repo:
   doc/00_llm_process/tool_expert
 
 Set SPIPE_HOST_ROOT to override host repo detection.
+Optional subproject links are read from .spipe/subproject_links.sdn.
 USAGE
 }
 
@@ -83,9 +84,82 @@ link_one() {
   echo "linked $rel"
 }
 
+link_pair() {
+  target_rel="$1"
+  source_rel="$2"
+  source="${HOST_ROOT}/${source_rel}"
+  target="${HOST_ROOT}/${target_rel}"
+
+  if [ ! -e "$source" ]; then
+    echo "skip_missing_subproject_source $target_rel"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$target")"
+
+  if [ -L "$target" ]; then
+    current="$(readlink "$target")"
+    if [ "$current" = "$source_rel" ] || [ "$current" = "$source" ]; then
+      echo "ok_subproject $target_rel"
+      return 0
+    fi
+    if [ "$FORCE" -ne 1 ]; then
+      echo "skip_existing_subproject $target_rel"
+      return 0
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "would_replace_subproject $target_rel"
+      return 0
+    fi
+    rm -f -- "$target"
+  fi
+
+  if [ -e "$target" ]; then
+    if [ "$FORCE" -ne 1 ]; then
+      echo "skip_existing_subproject $target_rel"
+      return 0
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "would_replace_subproject $target_rel"
+      return 0
+    fi
+    rm -rf -- "$target"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "would_link_subproject $target_rel"
+    return 0
+  fi
+
+  ln -s "$source_rel" "$target"
+  echo "linked_subproject $target_rel"
+}
+
+link_subprojects() {
+  config="${SPIPE_SUBPROJECT_LINKS:-${HOST_ROOT}/.spipe/subproject_links.sdn}"
+  if [ ! -f "$config" ]; then
+    echo "subproject_links_config=missing"
+    return 0
+  fi
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ""|"#"*) continue ;;
+    esac
+    target_rel="${line%%|*}"
+    source_rel="${line#*|}"
+    if [ "$target_rel" = "$line" ] || [ -z "$target_rel" ] || [ -z "$source_rel" ]; then
+      echo "skip_invalid_subproject_link $line" >&2
+      continue
+    fi
+    link_pair "$target_rel" "$source_rel"
+  done < "$config"
+}
+
 link_one "doc/00_llm_process/skill_command"
 link_one "doc/00_llm_process/spipe"
 link_one "doc/00_llm_process/template"
 link_one "doc/00_llm_process/project_expert"
 link_one "doc/00_llm_process/domain_expert"
 link_one "doc/00_llm_process/tool_expert"
+link_subprojects

@@ -56,3 +56,16 @@ powershell -ExecutionPolicy Bypass -File .spipe\spipe\scripts\setup-spipe-links.
 
 Use `--force` or `-Force` only when replacing existing host directories with
 links to this module.
+
+## Subproject Experts
+
+For repositories with subprojects stored as Git submodules, create
+`.spipe/subproject_links.sdn` in the host repo. Each non-comment line links a
+host expert target to a source directory inside the submodule:
+
+```sdn
+doc/00_llm_process/project_expert/example|examples/example/doc/00_llm_process/project_expert/example
+```
+
+The Unix setup script creates symlinks. The PowerShell setup script creates
+Windows junctions.
