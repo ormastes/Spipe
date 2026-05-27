@@ -47,7 +47,7 @@ link_one() {
 
   if [ -L "$target" ]; then
     current="$(readlink "$target")"
-    if [ "$current" = "$source" ]; then
+    if [ "$current" = "$link_target" ]; then
       echo "ok $rel"
       return 0
     fi
