@@ -51,6 +51,15 @@ link_one() {
       echo "ok $rel"
       return 0
     fi
+    if [ "$FORCE" -ne 1 ]; then
+      echo "skip_existing $rel"
+      return 0
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "would_replace $rel"
+      return 0
+    fi
+    rm -f -- "$target"
   fi
 
   if [ -e "$target" ]; then
