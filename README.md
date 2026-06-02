@@ -28,8 +28,29 @@ node cli/spipe.js doctor ../..
 node mcp/server.js
 ```
 
+`doctor` checks both reusable SPipe process surfaces and host mount invariants
+such as `.spipe/doc`, `.spipe/spipe_project`, `.spipe/spipe`, and
+`examples/spipe`.
+
 When installed as an npm-style package, the binaries are `spipe` and
 `spipe-mcp`.
+
+The CLI also owns the reusable LLM fine-tune process. It can initialize host
+attempt registries, record data downloads, model research, base-model choice,
+tuning method, training script, eval results, retry decisions, and app/server
+handoff evidence:
+
+```sh
+node cli/spipe.js fine-tune-init
+node cli/spipe.js fine-tune-options
+node cli/spipe.js fine-tune-next <attempt_id>
+node cli/spipe.js fine-tune-report <attempt_id>
+node cli/spipe.js fine-tune-verify <record.sdn>
+```
+
+Final requirement generation remains user-gated. Use
+`fine-tune-select-requirements` only after the user chooses one feature option
+and one NFR option.
 
 ## Build Check
 
@@ -40,6 +61,13 @@ pointer:
 sh scripts/build.sh
 ```
 
+Host repositories that mount SPipe as submodules should also keep the parent
+index entries as gitlinks. In the Simple host, run:
+
+```sh
+sh scripts/check-spipe-submodule-gitlinks.shs --check
+```
+
 ## Host Setup
 
 From a host repository with this project mounted at `.spipe/spipe`:
@@ -48,10 +76,20 @@ From a host repository with this project mounted at `.spipe/spipe`:
 sh .spipe/spipe/scripts/setup-spipe-links.sh
 ```
 
+By default this links reusable SPipe surfaces into `doc/llm_process`. Host
+repositories can override the process-doc root with `.spipe/config.sdn`:
+
+```sdn
+docs:
+  host_process_doc: doc/00_llm_process
+```
+
+The Unix setup script also accepts `--doc-root PATH` or `SPIPE_DOC_ROOT=PATH`.
+
 On Windows PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .spipe\spipe\scripts\setup-spipe-links.ps1
+powershell -ExecutionPolicy Bypass -File .spipe\spipe\scripts\setup-spipe-links.ps1 -DocRoot doc\00_llm_process
 ```
 
 Use `--force` or `-Force` only when replacing existing host directories with

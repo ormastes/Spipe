@@ -5,20 +5,24 @@ MODULE_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 HOST_ROOT="${SPIPE_HOST_ROOT:-$(CDPATH= cd -- "${MODULE_ROOT}/../.." && pwd)}"
 FORCE=0
 DRY_RUN=0
+DOC_ROOT="${SPIPE_DOC_ROOT:-}"
 
 usage() {
   cat <<'USAGE'
-Usage: sh .spipe/spipe/scripts/setup-spipe-links.sh [--force] [--dry-run]
+Usage: sh .spipe/spipe/scripts/setup-spipe-links.sh [--force] [--dry-run] [--doc-root PATH]
 
 Links reusable SPipe process surfaces from .spipe/spipe into the host repo:
-  doc/00_llm_process/skill_command
-  doc/00_llm_process/spipe
-  doc/00_llm_process/template
-  doc/00_llm_process/project_expert
-  doc/00_llm_process/domain_expert
-  doc/00_llm_process/tool_expert
+  <doc-root>/skill_command
+  <doc-root>/spipe
+  <doc-root>/template
+  <doc-root>/project_expert
+  <doc-root>/domain_expert
+  <doc-root>/tool_expert
 
 Set SPIPE_HOST_ROOT to override host repo detection.
+Set SPIPE_DOC_ROOT or --doc-root to override the host process-doc root.
+Without either, .spipe/config.sdn host_process_doc is used when present,
+otherwise the generic default is doc/llm_process.
 Optional subproject links are read from .spipe/subproject_links.sdn.
 USAGE
 }
@@ -27,20 +31,45 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --force) FORCE=1 ;;
     --dry-run) DRY_RUN=1 ;;
+    --doc-root)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "setup-spipe-links: --doc-root requires a path" >&2
+        exit 2
+      fi
+      DOC_ROOT="$1"
+      ;;
     --help|-h) usage; exit 0 ;;
     *) echo "setup-spipe-links: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
 
+configured_doc_root() {
+  if [ -n "$DOC_ROOT" ]; then
+    printf '%s\n' "$DOC_ROOT"
+    return 0
+  fi
+  config="${HOST_ROOT}/.spipe/config.sdn"
+  if [ -f "$config" ]; then
+    value="$(sed -n 's/^[[:space:]]*host_process_doc:[[:space:]]*\([^[:space:]#][^[:space:]#]*\).*$/\1/p' "$config" | sed -n '1p')"
+    if [ -n "$value" ]; then
+      printf '%s\n' "$value"
+      return 0
+    fi
+  fi
+  printf '%s\n' "doc/llm_process"
+}
+
+DOC_ROOT="$(configured_doc_root)"
+
 link_one() {
-  rel="$1"
-  source="${MODULE_ROOT}/${rel}"
-  link_target="../../.spipe/spipe/${rel}"
-  target="${HOST_ROOT}/${rel}"
+  name="$1"
+  source="${MODULE_ROOT}/doc/00_llm_process/${name}"
+  target="${HOST_ROOT}/${DOC_ROOT}/${name}"
 
   if [ ! -e "$source" ]; then
-    echo "missing_source $rel" >&2
+    echo "missing_source doc/00_llm_process/$name" >&2
     return 1
   fi
 
@@ -48,16 +77,16 @@ link_one() {
 
   if [ -L "$target" ]; then
     current="$(readlink "$target")"
-    if [ "$current" = "$link_target" ]; then
-      echo "ok $rel"
+    if [ "$current" = "$source" ]; then
+      echo "ok ${DOC_ROOT}/${name}"
       return 0
     fi
     if [ "$FORCE" -ne 1 ]; then
-      echo "skip_existing $rel"
+      echo "skip_existing ${DOC_ROOT}/${name}"
       return 0
     fi
     if [ "$DRY_RUN" -eq 1 ]; then
-      echo "would_replace $rel"
+      echo "would_replace ${DOC_ROOT}/${name}"
       return 0
     fi
     rm -f -- "$target"
@@ -65,23 +94,23 @@ link_one() {
 
   if [ -e "$target" ]; then
     if [ "$FORCE" -ne 1 ]; then
-      echo "skip_existing $rel"
+      echo "skip_existing ${DOC_ROOT}/${name}"
       return 0
     fi
     if [ "$DRY_RUN" -eq 1 ]; then
-      echo "would_replace $rel"
+      echo "would_replace ${DOC_ROOT}/${name}"
       return 0
     fi
     rm -rf -- "$target"
   fi
 
   if [ "$DRY_RUN" -eq 1 ]; then
-    echo "would_link $rel"
+    echo "would_link ${DOC_ROOT}/${name}"
     return 0
   fi
 
-  ln -s "$link_target" "$target"
-  echo "linked $rel"
+  ln -s "$source" "$target"
+  echo "linked ${DOC_ROOT}/${name}"
 }
 
 link_pair() {
@@ -156,10 +185,10 @@ link_subprojects() {
   done < "$config"
 }
 
-link_one "doc/00_llm_process/skill_command"
-link_one "doc/00_llm_process/spipe"
-link_one "doc/00_llm_process/template"
-link_one "doc/00_llm_process/project_expert"
-link_one "doc/00_llm_process/domain_expert"
-link_one "doc/00_llm_process/tool_expert"
+link_one "skill_command"
+link_one "spipe"
+link_one "template"
+link_one "project_expert"
+link_one "domain_expert"
+link_one "tool_expert"
 link_subprojects

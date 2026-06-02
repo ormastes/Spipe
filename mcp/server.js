@@ -40,6 +40,21 @@ const tools = [
       },
       required: ["path"]
     }
+  },
+  {
+    name: "spipe_fine_tune_guide",
+    description: "Read the SPipe LLM fine-tune process guide.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "spipe_fine_tune_model_guide",
+    description: "Read the SPipe LLM model research and architecture guide.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "spipe_fine_tune_template",
+    description: "Read the SPipe LLM fine-tune attempt record template.",
+    inputSchema: { type: "object", properties: {} }
   }
 ];
 
@@ -84,6 +99,15 @@ function handleTool(name, args = {}) {
   }
   if (name === "spipe_read_doc") {
     return text(readDoc(args.path));
+  }
+  if (name === "spipe_fine_tune_guide") {
+    return text(readDoc("doc/00_llm_process/spipe/llm_finetune.md"));
+  }
+  if (name === "spipe_fine_tune_model_guide") {
+    return text(readDoc("doc/00_llm_process/spipe/llm_model_research.md"));
+  }
+  if (name === "spipe_fine_tune_template") {
+    return text(readDoc("doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn"));
   }
   throw new Error(`unknown tool: ${name}`);
 }

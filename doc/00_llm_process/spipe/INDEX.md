@@ -11,6 +11,9 @@
 | [`loop.md`](loop.md) | Continuous check-and-implement loop (`/spipe_loop`) |
 | [`guide.md`](guide.md) | Pointer to the canonical testing guide at `doc/07_guide/testing/testing.md` |
 | [`lint_rules.md`](lint_rules.md) | Lint-rules design doc (relocated from `doc/05_design/`) |
+| [`llm_finetune.md`](llm_finetune.md) | LLM fine-tune and retry loop for LLM-backed app/server development |
+| [`llm_model_research.md`](llm_model_research.md) | Base model research and architecture decision checklist |
+| [`llm_finetune_attempt_template.sdn`](llm_finetune_attempt_template.sdn) | Attempt record template |
 
 ## Skill entry-point
 

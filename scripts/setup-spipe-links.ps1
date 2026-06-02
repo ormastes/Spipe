@@ -2,7 +2,8 @@ param(
     [switch]$Force,
     [switch]$DryRun,
     [string]$HostRoot = "",
-    [string]$SubprojectLinks = ""
+    [string]$SubprojectLinks = "",
+    [string]$DocRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,21 +13,45 @@ if ($HostRoot -eq "") {
     $HostRoot = (Resolve-Path (Join-Path $ModuleRoot "..\..")).Path
 }
 
-$Links = @(
-    "doc/00_llm_process/skill_command",
-    "doc/00_llm_process/spipe",
-    "doc/00_llm_process/template",
-    "doc/00_llm_process/project_expert",
-    "doc/00_llm_process/domain_expert",
-    "doc/00_llm_process/tool_expert"
+$SurfaceNames = @(
+    "skill_command",
+    "spipe",
+    "template",
+    "project_expert",
+    "domain_expert",
+    "tool_expert"
 )
 
-foreach ($Rel in $Links) {
-    $Source = Join-Path $ModuleRoot $Rel
-    $Target = Join-Path $HostRoot $Rel
+if ($DocRoot -eq "") {
+    $EnvDocRoot = [Environment]::GetEnvironmentVariable("SPIPE_DOC_ROOT")
+    if ($EnvDocRoot -ne $null -and $EnvDocRoot -ne "") {
+        $DocRoot = $EnvDocRoot
+    }
+}
+
+if ($DocRoot -eq "") {
+    $ConfigPath = Join-Path $HostRoot ".spipe\config.sdn"
+    if (Test-Path $ConfigPath) {
+        foreach ($Line in Get-Content $ConfigPath) {
+            if ($Line -match '^\s*host_process_doc:\s*([^\s#]+)') {
+                $DocRoot = $Matches[1]
+                break
+            }
+        }
+    }
+}
+
+if ($DocRoot -eq "") {
+    $DocRoot = "doc/llm_process"
+}
+
+foreach ($Name in $SurfaceNames) {
+    $Source = Join-Path $ModuleRoot "doc\00_llm_process\$Name"
+    $Target = Join-Path $HostRoot (Join-Path $DocRoot $Name)
+    $Rel = "$DocRoot/$Name"
 
     if (-not (Test-Path $Source)) {
-        Write-Error "missing_source $Rel"
+        Write-Error "missing_source doc/00_llm_process/$Name"
     }
 
     $Parent = Split-Path $Target -Parent
