@@ -26,11 +26,12 @@ There are no behavioral differences between `/sp_dev`, `/dev`, and `/sstack`.
 For macOS GUI/web/2D rendering work, verify Vulkan/RenderDoc evidence through
 `scripts/setup/setup-gui-web-2d-vulkan-env.shs`. Start with `--check`, then use
 `--run` to compare Electron Chromium, original Chrome, and Simple Engine2D
-Vulkan on the same fixture. The wrapper records the selected Simple executable
-as `gui_web_2d_vulkan_simple_bin`; a fresh Rust driver with macOS Vulkan loader
+Vulkan on the same fixture. This top-level runbook is macOS-only; add Windows
+and Linux later with their own host notes and the same evidence keys. The
+wrapper records the selected Simple executable as
+`gui_web_2d_vulkan_simple_bin`; a fresh Rust driver with macOS Vulkan loader
 paths should report
 `gui_web_2d_vulkan_simple_bin_selection_reason=macos-vulkan-loader-paths-present`.
 Do not treat Electron or Chrome bitmaps as Vulkan proof when their logs record
 `vulkan-angle-unavailable`, and do not claim RenderDoc completion without `.rdc`
-files whose first bytes are `RDOC`. Windows and Linux GUI/web/2D RenderDoc
-runbooks are intentionally deferred; add them later with the same evidence keys.
+files whose first bytes are `RDOC`.
