@@ -15,6 +15,20 @@ function yes(input, key) { if (input[key] !== true) throw new Error(`${key} must
 function no(input, key) { if (input[key] !== false) throw new Error(`${key} must be false`); }
 function safeIdentity(input, key) { const value = text(input, key); if (value.includes("\n") || value.includes("\r")) throw new Error(`${key} must be one safe identity`); return value; }
 function plan(operation, inputs, checks, nextAction) { const body = { schema: "spipe-release-plan/1", operation, contract_sha256: releaseContractHash(), mutation: "none", external_authority_required: true, checks, next_action: nextAction, inputs }; return Object.freeze({ ...body, plan_sha256: digest(body) }); }
+function versionOrder(value) {
+  const [core, prerelease = ""] = value.split("-");
+  const [major, minor, patch] = core.split(".").map(Number);
+  if (prerelease === "") return [major, minor, patch, 4, 0];
+  const [label, sequence] = prerelease.split(".");
+  return [major, minor, patch, { alpha: 1, beta: 2, rc: 3 }[label], Number(sequence)];
+}
+function isNewerVersion(candidate, current) {
+  const left = versionOrder(candidate); const right = versionOrder(current);
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return left[index] > right[index];
+  }
+  return false;
+}
 
 function validateSession(input) {
   const sessionId = text(input, "session_id"); const workspace = text(input, "workspace_path"); const mainWorkspace = text(input, "main_workspace_path");
@@ -127,6 +141,26 @@ export function planPromotion(input) {
   return plan("promotion", input, ["exact admitted candidate and commit", "qualification and admission receipts", "exact artifact and evidence identities", "signed annotated immutable exact tag", "promotion does not rebuild"], "submit to the protected release authority; this planner performs no push, tag, delete, rebuild, or publication");
 }
 
+export function planWithdrawal(input) {
+  const version = match(input, "version", VERSION);
+  if (input.tag !== "v" + version) throw new Error("tag must equal v" + version);
+  match(input, "published_commit_sha", COMMIT);
+  match(input, "artifact_manifest_sha256", SHA256);
+  text(input, "withdrawal_reason");
+  const advisoryUri = text(input, "advisory_uri");
+  let advisory;
+  try { advisory = new URL(advisoryUri); } catch { throw new Error("advisory_uri must be an absolute HTTPS URL"); }
+  if (advisory.protocol !== "https:") throw new Error("advisory_uri must be an absolute HTTPS URL");
+  const replacementVersion = match(input, "replacement_version", VERSION);
+  if (!isNewerVersion(replacementVersion, version)) throw new Error("replacement_version must identify a new version greater than the withdrawn version");
+  yes(input, "published_tag_preserved");
+  yes(input, "published_assets_preserved");
+  yes(input, "history_preserved");
+  yes(input, "replacement_is_new_version");
+  yes(input, "withdrawal_authority_approved");
+  return plan("withdrawal", input, ["exact published identity", "public advisory", "published tag assets and history are preserved", "corrections use a distinct replacement version", "no destructive mutation"], "submit withdrawal metadata to the protected release authority; do not delete or overwrite the tag, assets, artifacts, or history");
+}
+
 export function createReleasePlan(operation, input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("input must be a JSON object");
   assertExactReleaseFields(operation, input);
@@ -134,6 +168,7 @@ export function createReleasePlan(operation, input) {
   if (operation === "beta-backport") return planBetaBackport(input);
   if (operation === "candidate") return planCandidate(input);
   if (operation === "promotion") return planPromotion(input);
+  if (operation === "withdrawal") return planWithdrawal(input);
   if (operation === "main-fix-discovery") return planMainFixDiscovery(input);
   if (operation === "forward-port") return planForwardPort(input);
   throw new Error(`unknown release planning operation: ${operation}`);

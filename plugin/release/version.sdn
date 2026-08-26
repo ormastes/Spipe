@@ -1,0 +1,9 @@
+version:
+  schema: spipe-release-version/1
+  product: spipe
+  semver: 0.2.0
+
+projections:
+  - package.json
+  - .codex-plugin/plugin.json
+  - manifest.sdn

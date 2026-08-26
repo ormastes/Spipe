@@ -4,15 +4,14 @@ import { stableJson } from "../../src/format/stable.js";
 export function createLineHandler(router, write) {
   return function handleLine(line) {
     let message;
+    let requestId = null;
     try {
       message = JSON.parse(line);
+      requestId = message && Object.hasOwn(message, "id") ? message.id : null;
       const response = router(message);
       if (response !== undefined) write(`${stableJson(response)}\n`);
     } catch (error) {
-      // Legacy SPipe reports handler and parse failures with a null id. Keep
-      // that wire behavior through the protocol-neutral Wave 1 extraction;
-      // request-id preservation belongs to the later versioned MCP migration.
-      write(`${stableJson(errorResult(null, error))}\n`);
+      write(`${stableJson(errorResult(requestId, error))}\n`);
     }
   };
 }

@@ -6,6 +6,8 @@ cd "$ROOT_DIR"
 
 required_paths="
 README.md
+LICENSE
+release/version.sdn
 doc/00_llm_process/spipe/skill.md
 doc/00_llm_process/spipe/llm_finetune.md
 doc/00_llm_process/spipe/llm_model_research.md
@@ -30,13 +32,19 @@ doc/00_llm_process/tool_expert
 .gemini/commands/sp_dev.toml
 .gemini/commands/release.toml
 .gemini/commands/sync.toml
+.github/workflows/build.yml
 package.json
 cli/spipe.js
 mcp/server.js
 src/release/contract.js
 src/release/planner.js
+src/release/version.js
 test/unit/release_policy_test.js
+test/windows/setup_spipe_links_containment.ps1
 plugin/.codex-plugin/plugin.json
+plugin/package.json
+plugin/LICENSE
+plugin/release/version.sdn
 plugin/manifest.sdn
 plugin/skills/software-release/SKILL.md
 plugin/skills/release/SKILL.md
@@ -52,6 +60,7 @@ plugin/scripts/setup-spipe-links.sh
 plugin/scripts/setup-spipe-links.ps1
 plugin/src/release/contract.js
 plugin/src/release/planner.js
+plugin/src/release/version.js
 plugin/doc/00_llm_process/skill_command/command/release.md
 plugin/doc/00_llm_process/spipe/skill.md
 plugin/doc/00_llm_process/template/feature_skill.md
@@ -79,6 +88,7 @@ fi
 
 node --check cli/spipe.js >/dev/null
 node --check mcp/server.js >/dev/null
+canonical_version="$(node cli/spipe.js --version)"
 if git -C ../.. rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git -C ../.. ls-files --stage examples/spipe | grep -q '^100'
   git -C ../.. ls-files --stage .spipe/spipe | grep -q '^160000 .*	.spipe/spipe$'
@@ -92,37 +102,97 @@ cmp cli/spipe.js plugin/cli/spipe.js
 cmp src/cli/release_commands.js plugin/src/cli/release_commands.js
 cmp scripts/setup-spipe-links.sh plugin/scripts/setup-spipe-links.sh
 cmp scripts/setup-spipe-links.ps1 plugin/scripts/setup-spipe-links.ps1
+cmp mcp/protocol/errors.js plugin/mcp/protocol/errors.js
+cmp mcp/protocol/initialize.js plugin/mcp/protocol/initialize.js
+cmp mcp/protocol/resources.js plugin/mcp/protocol/resources.js
+cmp mcp/protocol/router.js plugin/mcp/protocol/router.js
 cmp mcp/protocol/tools.js plugin/mcp/protocol/tools.js
+cmp mcp/transport/stdio.js plugin/mcp/transport/stdio.js
+cmp src/format/stable.js plugin/src/format/stable.js
 cmp src/release/contract.js plugin/src/release/contract.js
 cmp src/release/planner.js plugin/src/release/planner.js
+cmp src/release/version.js plugin/src/release/version.js
 cmp doc/00_llm_process/skill_command/command/release.md plugin/doc/00_llm_process/skill_command/command/release.md
 printf '%s\n' '{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_promotion_plan"
+printf '%s\n' '{"jsonrpc":"2.0","id":51,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_withdrawal_plan"
 printf '%s\n' '{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"spipe://skill"}}' | node plugin/mcp/server.js | grep -q "SPipe"
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_fine_tune_guide"
 printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"spipe_fine_tune_template","arguments":{}}}' | node mcp/server.js | grep -q "attempt_id"
 node cli/spipe.js info >/dev/null
 node cli/spipe.js experts >/dev/null
 node cli/spipe.js doc-root ../.. >/dev/null
-node cli/spipe.js doctor ../.. >/dev/null
-node cli/spipe.js doctor ../.. | grep -q "host_ok spipe_project_link"
-node cli/spipe.js doctor ../.. | grep -q "host_ok doc_link"
-node cli/spipe.js doctor ../.. | grep -q "host_ok domain_expert_link"
-node cli/spipe.js doctor ../.. | grep -q "host_ok template_link"
-node cli/spipe.js doctor ../.. | grep -q "host_ok spipe_docs_link"
 node cli/spipe.js fine-tune-guide >/dev/null
 node cli/spipe.js fine-tune-model-guide >/dev/null
 node cli/spipe.js fine-tune-template >/dev/null
 node cli/spipe.js release-guide >/dev/null
 node cli/spipe.js release-capabilities | grep -q "capability.immutable_release_candidates=true"
+node cli/spipe.js release-capabilities | grep -q "capability.non_destructive_withdrawal_planning=true"
 node cli/spipe.js release-capabilities | grep -q "capability.external_release_mutation=false"
+node cli/spipe.js release-version-check | grep -q '"valid": true'
+node plugin/cli/spipe.js release-version-check | grep -q '"valid": true'
+test "$(node plugin/cli/spipe.js --version)" = "$canonical_version"
+withdrawal_json='{"version":"1.2.0","tag":"v1.2.0","published_commit_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","artifact_manifest_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","withdrawal_reason":"critical defect","advisory_uri":"https://example.invalid/advisories/SP-1","replacement_version":"1.2.1","published_tag_preserved":true,"published_assets_preserved":true,"history_preserved":true,"replacement_is_new_version":true,"withdrawal_authority_approved":true}'
+node cli/spipe.js release-withdrawal-plan "$withdrawal_json" | grep -q '"operation": "withdrawal"'
+node plugin/cli/spipe.js release-withdrawal-plan "$withdrawal_json" | grep -q '"operation": "withdrawal"'
 printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"spipe_release_capabilities","arguments":{}}}' | node mcp/server.js | grep -q "immutable_release_candidates=true"
 printf '%s\n' '{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_release_main_fix_discovery_plan"
+printf '%s\n' '{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"spipe_release_version_check","arguments":{}}}' | node plugin/mcp/server.js | grep -q '\\"valid\\": true'
+
+tmp_plugin="$(mktemp -d)"
+cp -R plugin/. "$tmp_plugin/"
+(cd "$tmp_plugin" && node cli/spipe.js --version | grep -qx "$canonical_version")
+printf '%s\n' '{"jsonrpc":"2.0","id":42,"method":"tools/list","params":{}}' |
+  (cd "$tmp_plugin" && node mcp/server.js) | grep -q 'spipe_release_version_check'
+rm -rf "$tmp_plugin"
+
+tmp_pack="$(mktemp -d)"
+tmp_install="$(mktemp -d)"
+npm pack --ignore-scripts --silent --pack-destination "$tmp_pack" >/dev/null
+package_tgz="$tmp_pack/simple-lang-spipe-$canonical_version.tgz"
+test -f "$package_tgz"
+npm install --ignore-scripts --no-audit --no-fund --silent --prefix "$tmp_install" "$package_tgz"
+installed_package="$tmp_install/node_modules/@simple-lang/spipe"
+test -f "$installed_package/release/version.sdn"
+npm --prefix "$tmp_install" exec --offline -- spipe --version | grep -qx "$canonical_version"
+printf '%s\n' '{"jsonrpc":"2.0","id":43,"method":"initialize","params":{}}' |
+  npm --prefix "$tmp_install" exec --offline -- spipe-mcp | grep -q "\"version\":\"$canonical_version\""
+rm -rf "$tmp_pack" "$tmp_install"
+
 node --test test/unit/release_policy_test.js
 
 tmp_link_host="$(mktemp -d)"
+tmp_link_outside="$(mktemp -d)"
 tmp_host="$(mktemp -d)"
-trap 'rm -rf "$tmp_host" "$tmp_link_host"' EXIT
+trap 'rm -rf "$tmp_host" "$tmp_link_host" "$tmp_link_outside"' EXIT
 SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run | grep -q "doc/llm_process/spipe"
+test ! -e "$tmp_link_host/doc"
+if SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run --force --doc-root ../escape >/dev/null 2>&1; then
+  echo "setup accepted an escaping doc root" >&2
+  exit 1
+fi
+for unsafe_doc_root in ./doc/llm_process doc/llm_process/; do
+  if SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run --doc-root "$unsafe_doc_root" >/dev/null 2>&1; then
+    echo "setup accepted a dot-segment or trailing-slash doc root: $unsafe_doc_root" >&2
+    exit 1
+  fi
+done
+if ln -s "$tmp_link_outside" "$tmp_link_host/linked-outside" 2>/dev/null && [ -L "$tmp_link_host/linked-outside" ]; then
+  if SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --force --doc-root linked-outside/process >/dev/null 2>&1; then
+    echo "setup accepted a doc root beneath an escaping symbolic-link ancestor" >&2
+    exit 1
+  fi
+  test ! -e "$tmp_link_outside/process"
+fi
+rm -rf "$tmp_link_host/linked-outside"
+mkdir -p "$tmp_link_host/.spipe"
+if ln -s "$tmp_link_outside" "$tmp_link_host/linked-source" 2>/dev/null && [ -L "$tmp_link_host/linked-source" ]; then
+  printf 'safe-target|linked-source\n' > "$tmp_link_host/.spipe/subproject_links.sdn"
+  if SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run >/dev/null 2>&1; then
+    echo "setup accepted a subproject source beneath an escaping symbolic-link ancestor" >&2
+    exit 1
+  fi
+  rm -f "$tmp_link_host/.spipe/subproject_links.sdn" "$tmp_link_host/linked-source"
+fi
 node cli/spipe.js doc-root "$tmp_link_host" | grep -q "^doc/llm_process$"
 mkdir -p "$tmp_link_host/.spipe"
 printf 'docs:\n  host_process_doc: doc/00_llm_process\n' > "$tmp_link_host/.spipe/config.sdn"

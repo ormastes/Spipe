@@ -1,8 +1,13 @@
 #!/bin/sh
 set -eu
 
-MODULE_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-HOST_ROOT="${SPIPE_HOST_ROOT:-$(CDPATH= cd -- "${MODULE_ROOT}/../.." && pwd)}"
+MODULE_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+HOST_ROOT="${SPIPE_HOST_ROOT:-$(CDPATH= cd -- "${MODULE_ROOT}/../.." && pwd -P)}"
+if [ ! -d "$HOST_ROOT" ]; then
+  echo "setup-spipe-links: host repository does not exist: $HOST_ROOT" >&2
+  exit 2
+fi
+HOST_ROOT="$(CDPATH= cd -- "$HOST_ROOT" && pwd -P)"
 FORCE=0
 DRY_RUN=0
 DOC_ROOT="${SPIPE_DOC_ROOT:-}"
@@ -63,6 +68,91 @@ configured_doc_root() {
 
 DOC_ROOT="$(configured_doc_root)"
 
+safe_relative_path() {
+  case "$1" in
+    ""|/*|../*|*/../*|*/..|*\\*|*//*|.|./*|*/./*|*/.|*/) return 1 ;;
+  esac
+  return 0
+}
+
+safe_relative_path "$DOC_ROOT" || {
+  echo "setup-spipe-links: doc root must stay inside the host repository: $DOC_ROOT" >&2
+  exit 2
+}
+
+canonical_existing_directory() {
+  candidate="$1"
+  while [ ! -d "$candidate" ]; do
+    if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+      return 1
+    fi
+    next="$(dirname "$candidate")"
+    [ "$next" != "$candidate" ] || return 1
+    candidate="$next"
+  done
+  (CDPATH= cd -P -- "$candidate" && pwd -P)
+}
+
+canonical_existing_path() {
+  candidate="$1"
+  depth=0
+  while [ -L "$candidate" ]; do
+    depth=$((depth + 1))
+    [ "$depth" -le 40 ] || return 1
+    link_target="$(readlink "$candidate")" || return 1
+    case "$link_target" in
+      /*) candidate="$link_target" ;;
+      *) candidate="$(dirname "$candidate")/$link_target" ;;
+    esac
+  done
+  if [ -d "$candidate" ]; then
+    (CDPATH= cd -P -- "$candidate" && pwd -P)
+    return
+  fi
+  [ -e "$candidate" ] || return 1
+  canonical_parent="$(canonical_existing_directory "$(dirname "$candidate")")" || return 1
+  printf '%s/%s\n' "$canonical_parent" "$(basename "$candidate")"
+}
+
+assert_safe_source() {
+  canonical_source="$(canonical_existing_path "$1")" || {
+    echo "setup-spipe-links: subproject source cannot be resolved: $1" >&2
+    return 1
+  }
+  case "$canonical_source" in
+    "$HOST_ROOT"|"$HOST_ROOT"/*) return 0 ;;
+    *)
+      echo "setup-spipe-links: subproject source escapes the host repository: $1" >&2
+      return 1
+      ;;
+  esac
+}
+
+assert_safe_target_parent() {
+  target_parent="$(dirname "$1")"
+  canonical_parent="$(canonical_existing_directory "$target_parent")" || {
+    echo "setup-spipe-links: target parent is not a directory: $target_parent" >&2
+    return 1
+  }
+  case "$canonical_parent" in
+    "$HOST_ROOT"|"$HOST_ROOT"/*) return 0 ;;
+    *)
+      echo "setup-spipe-links: target parent escapes the host repository: $target_parent" >&2
+      return 1
+      ;;
+  esac
+}
+
+ensure_parent() {
+  assert_safe_target_parent "$1"
+  parent=$(dirname "$1")
+  if [ "$DRY_RUN" -eq 1 ]; then
+    [ -d "$parent" ] || echo "would_mkdir ${parent#${HOST_ROOT}/}"
+  else
+    mkdir -p "$parent"
+  fi
+}
+
 link_one() {
   name="$1"
   source="${MODULE_ROOT}/doc/00_llm_process/${name}"
@@ -73,7 +163,7 @@ link_one() {
     return 1
   fi
 
-  mkdir -p "$(dirname "$target")"
+  ensure_parent "$target"
 
   if [ -L "$target" ]; then
     current="$(readlink "$target")"
@@ -89,6 +179,7 @@ link_one() {
       echo "would_replace ${DOC_ROOT}/${name}"
       return 0
     fi
+    assert_safe_target_parent "$target"
     rm -f -- "$target"
   fi
 
@@ -101,6 +192,7 @@ link_one() {
       echo "would_replace ${DOC_ROOT}/${name}"
       return 0
     fi
+    assert_safe_target_parent "$target"
     rm -rf -- "$target"
   fi
 
@@ -109,6 +201,7 @@ link_one() {
     return 0
   fi
 
+  assert_safe_target_parent "$target"
   ln -s "$source" "$target"
   echo "linked ${DOC_ROOT}/${name}"
 }
@@ -116,6 +209,10 @@ link_one() {
 link_pair() {
   target_rel="$1"
   source_rel="$2"
+  safe_relative_path "$target_rel" && safe_relative_path "$source_rel" || {
+    echo "setup-spipe-links: subproject link paths must stay inside the host repository" >&2
+    return 1
+  }
   source="${HOST_ROOT}/${source_rel}"
   target="${HOST_ROOT}/${target_rel}"
 
@@ -124,7 +221,8 @@ link_pair() {
     return 0
   fi
 
-  mkdir -p "$(dirname "$target")"
+  assert_safe_source "$source"
+  ensure_parent "$target"
 
   if [ -L "$target" ]; then
     current="$(readlink "$target")"
@@ -140,6 +238,7 @@ link_pair() {
       echo "would_replace_subproject $target_rel"
       return 0
     fi
+    assert_safe_target_parent "$target"
     rm -f -- "$target"
   fi
 
@@ -152,6 +251,7 @@ link_pair() {
       echo "would_replace_subproject $target_rel"
       return 0
     fi
+    assert_safe_target_parent "$target"
     rm -rf -- "$target"
   fi
 
@@ -160,6 +260,7 @@ link_pair() {
     return 0
   fi
 
+  assert_safe_target_parent "$target"
   ln -s "$source_rel" "$target"
   echo "linked_subproject $target_rel"
 }

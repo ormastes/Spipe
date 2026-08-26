@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseCapabilities, releaseContractHash, releaseSchemas } from "../src/release/contract.js";
 import { runReleaseCommand } from "../src/cli/release_commands.js";
+import { canonicalVersion, checkVersionAuthority } from "../src/release/version.js";
 
 const moduleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -21,6 +22,7 @@ Commands:
   skill                Print the SPipe skill guide.
   release-guide        Print the protected software-release operator guide.
   release-capabilities Print release/session/candidate schemas and capabilities.
+  release-version-check Verify release/version.sdn and every declared projection.
   release-session-plan <json>
                        Validate and plan an isolated release session.
   release-beta-backport-plan <json>
@@ -29,6 +31,8 @@ Commands:
                        Validate an immutable build-once candidate plan.
   release-promotion-plan <json>
                        Validate exact promote-without-rebuild inputs.
+  release-withdrawal-plan <json>
+                       Validate a non-destructive published-release withdrawal.
   release-main-fix-discovery-plan <json>
                        Check a read-only main snapshot for reviewed bug-fix candidates.
   release-forward-port-plan <json>
@@ -1518,8 +1522,14 @@ switch (command) {
     break;
   case "--version":
   case "-v":
-    console.log("0.2.0");
+    console.log(canonicalVersion(moduleRoot));
     break;
+  case "release-version-check": {
+    const result = checkVersionAuthority(moduleRoot);
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.valid) process.exitCode = 1;
+    break;
+  }
   case "release-guide":
     console.log(readFileSync(join(moduleRoot, "doc/00_llm_process/skill_command/command/release.md"), "utf8"));
     break;
@@ -1532,6 +1542,7 @@ switch (command) {
   case "release-beta-backport-plan":
   case "release-candidate-plan":
   case "release-promotion-plan":
+  case "release-withdrawal-plan":
   case "release-main-fix-discovery-plan":
   case "release-forward-port-plan":
     try {

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const releaseSchemas = Object.freeze({ vcs_policy: "spipe-vcs/3", session: "spipe-session/1", release: "spipe-release/1", candidate: "spipe-candidate/1" });
-export const releaseCapabilities = Object.freeze({ isolated_sessions: true, reviewed_beta_backports: true, immutable_release_candidates: true, promote_without_rebuild: true, operational_release_planning: true, main_fix_discovery_planning: true, release_first_forward_port_validation: true, external_release_mutation: false });
+export const releaseCapabilities = Object.freeze({ isolated_sessions: true, reviewed_beta_backports: true, immutable_release_candidates: true, promote_without_rebuild: true, non_destructive_withdrawal_planning: true, operational_release_planning: true, main_fix_discovery_planning: true, release_first_forward_port_validation: true, external_release_mutation: false });
 
 export const releaseProjectionContract = Object.freeze([
   ["isolated-session", "one isolated release session owns one work branch and one non-main worktree"],
@@ -31,6 +31,7 @@ export const releaseOperations = Object.freeze({
   "beta-backport": ["direction", "source_ref", "source_commit_sha", "change_id", "work_id", "change_kind", "review_receipt_sha256", "reviewed_source_commit_sha", "reviewed_change_id", "target_line", "expected_target_sha", "adaptation_reason", "evidence_sha256", "evidence_result_commit_sha", "evidence_target_sha", "result_commit_sha", "forward_port_target_ref", "forward_port_receipt_sha256"],
   candidate: [...candidateManifestFields, "existing_identity"],
   promotion: [...new Set([...releaseAdmissionFields, ...promotionPlanFields]), "release_authority_approved"],
+  withdrawal: ["version", "tag", "published_commit_sha", "artifact_manifest_sha256", "withdrawal_reason", "advisory_uri", "replacement_version", "published_tag_preserved", "published_assets_preserved", "history_preserved", "replacement_is_new_version", "withdrawal_authority_approved"],
   "main-fix-discovery": ["main_commit_sha", "since_commit_sha", "release_line_head_sha", "direction", "read_only_snapshot", "main_is_independent_trunk", "interval_seconds", "last_scan_epoch", "now_epoch", "candidates", "selected_commit_shas", "forward_port_required", "forward_port_target_ref"],
   "forward-port": ["release_fix_commit_sha", "main_base_commit_sha", "review_receipt_sha256", "forward_port_receipt_sha256", "evidence_sha256", "evidence_release_fix_commit_sha", "evidence_main_base_commit_sha", "evidence_main_result_commit_sha", "main_result_commit_sha", "release_first_exception_approved", "reviewed", "main_tests_renewed", "protected_ref_direct_update", "forward_port_branch", "forward_port_target_ref"]
 });

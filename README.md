@@ -57,6 +57,7 @@ node cli/spipe.js release-beta-backport-plan '<json>'
 node cli/spipe.js release-forward-port-plan '<json>'
 node cli/spipe.js release-candidate-plan '<json>'
 node cli/spipe.js release-promotion-plan '<json>'
+node cli/spipe.js release-withdrawal-plan '<json>'
 ```
 
 External protected authorities remain responsible for reviewed integration,

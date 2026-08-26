@@ -13,6 +13,108 @@ if ($HostRoot -eq "") {
     $HostRoot = (Resolve-Path (Join-Path $ModuleRoot "..\..")).Path
 }
 
+function Test-PathWithin([string]$Root, [string]$Candidate) {
+    $RootPath = [IO.Path]::GetFullPath($Root).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $CandidatePath = [IO.Path]::GetFullPath($Candidate).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    if ($CandidatePath.Equals($RootPath, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    return $CandidatePath.StartsWith("$RootPath$([IO.Path]::DirectorySeparatorChar)", [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-CanonicalDirectory([string]$Path, [int]$Depth = 0) {
+    if ($Depth -gt 40) { throw "too many junction or symbolic-link levels: $Path" }
+    $FullPath = [IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $FullPath -PathType Container)) {
+        throw "path is not an existing directory: $Path"
+    }
+
+    $PathRoot = [IO.Path]::GetPathRoot($FullPath)
+    $Current = $PathRoot
+    foreach ($Segment in ($FullPath.Substring($PathRoot.Length) -split '[\\/]' | Where-Object { $_ -ne "" })) {
+        $Current = Join-Path $Current $Segment
+        $Item = Get-Item -LiteralPath $Current -Force
+        if (($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            $TargetValue = @($Item.Target)[0]
+            if ([string]::IsNullOrWhiteSpace($TargetValue)) {
+                throw "cannot resolve junction or symbolic link: $Current"
+            }
+            if (-not [IO.Path]::IsPathRooted($TargetValue)) {
+                $TargetValue = Join-Path $Item.Parent.FullName $TargetValue
+            }
+            $Current = Resolve-CanonicalDirectory $TargetValue ($Depth + 1)
+        }
+    }
+    return [IO.Path]::GetFullPath($Current)
+}
+
+function Resolve-CanonicalPath([string]$Path, [int]$Depth = 0) {
+    if ($Depth -gt 40) { throw "too many junction or symbolic-link levels: $Path" }
+    $Item = Get-Item -LiteralPath ([IO.Path]::GetFullPath($Path)) -Force
+    if ($Item.PSIsContainer) { return Resolve-CanonicalDirectory $Item.FullName $Depth }
+    if (($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $TargetValue = @($Item.Target)[0]
+        if ([string]::IsNullOrWhiteSpace($TargetValue)) {
+            throw "cannot resolve junction or symbolic link: $Path"
+        }
+        if (-not [IO.Path]::IsPathRooted($TargetValue)) {
+            $TargetValue = Join-Path $Item.Parent.FullName $TargetValue
+        }
+        return Resolve-CanonicalPath $TargetValue ($Depth + 1)
+    }
+    $CanonicalParent = Resolve-CanonicalDirectory $Item.Parent.FullName $Depth
+    return Join-Path $CanonicalParent $Item.Name
+}
+
+$HostRoot = [IO.Path]::GetFullPath($HostRoot)
+if (-not (Test-Path -LiteralPath $HostRoot -PathType Container)) {
+    throw "host repository does not exist: $HostRoot"
+}
+$NormalizedHostRoot = $HostRoot
+$CanonicalHostRoot = Resolve-CanonicalDirectory $HostRoot
+
+function Test-SafeRelativePath([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value) -or [IO.Path]::IsPathRooted($Value) -or $Value -match '^[A-Za-z]:' -or $Value.EndsWith("/") -or $Value.EndsWith("\")) { return $false }
+    $Segments = $Value -split '[\\/]'
+    return -not ($Segments | Where-Object { $_ -eq "" -or $_ -eq "." -or $_ -eq ".." })
+}
+
+function Assert-SafeTargetParent([string]$Target) {
+    $FullTarget = [IO.Path]::GetFullPath($Target)
+    if (-not (Test-PathWithin $NormalizedHostRoot $FullTarget)) {
+        throw "target path escapes the host repository: $Target"
+    }
+
+    $Cursor = Split-Path $FullTarget -Parent
+    while (-not (Test-Path -LiteralPath $Cursor)) {
+        $Next = Split-Path $Cursor -Parent
+        if ($Next -eq $Cursor -or $Next -eq "") { throw "cannot resolve target parent: $Target" }
+        $Cursor = $Next
+    }
+    if (-not (Test-Path -LiteralPath $Cursor -PathType Container)) {
+        throw "target parent is not a directory: $Cursor"
+    }
+    $CanonicalParent = Resolve-CanonicalDirectory $Cursor
+    if (-not (Test-PathWithin $CanonicalHostRoot $CanonicalParent)) {
+        throw "target parent escapes the host repository through a junction or symbolic link: $Target"
+    }
+}
+
+function Assert-SafeSource([string]$Source) {
+    $CanonicalSource = Resolve-CanonicalPath $Source
+    if (-not (Test-PathWithin $CanonicalHostRoot $CanonicalSource)) {
+        throw "subproject source escapes the host repository through a junction or symbolic link: $Source"
+    }
+}
+
+function Remove-SafeTarget([string]$Target) {
+    Assert-SafeTargetParent $Target
+    $Item = Get-Item -LiteralPath $Target -Force
+    if (($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Remove-Item -LiteralPath $Target -Force
+    } else {
+        Remove-Item -LiteralPath $Target -Recurse -Force
+    }
+}
+
 $SurfaceNames = @(
     "skill_command",
     "spipe",
@@ -44,6 +146,9 @@ if ($DocRoot -eq "") {
 if ($DocRoot -eq "") {
     $DocRoot = "doc/llm_process"
 }
+if (-not (Test-SafeRelativePath $DocRoot)) {
+    throw "doc root must stay inside the host repository: $DocRoot"
+}
 
 foreach ($Name in $SurfaceNames) {
     $Source = Join-Path $ModuleRoot "doc\00_llm_process\$Name"
@@ -55,6 +160,7 @@ foreach ($Name in $SurfaceNames) {
     }
 
     $Parent = Split-Path $Target -Parent
+    Assert-SafeTargetParent $Target
     if (-not (Test-Path $Parent)) {
         if ($DryRun) {
             Write-Output "would_mkdir $Parent"
@@ -80,7 +186,7 @@ foreach ($Name in $SurfaceNames) {
             continue
         }
 
-        Remove-Item $Target -Recurse -Force
+        Remove-SafeTarget $Target
     }
 
     if ($DryRun) {
@@ -88,6 +194,7 @@ foreach ($Name in $SurfaceNames) {
         continue
     }
 
+    Assert-SafeTargetParent $Target
     New-Item -ItemType Junction -Path $Target -Target $Source | Out-Null
     Write-Output "linked $Rel"
 }
@@ -115,6 +222,9 @@ Get-Content $SubprojectLinks | ForEach-Object {
 
     $TargetRel = $Parts[0]
     $SourceRel = $Parts[1]
+    if (-not (Test-SafeRelativePath $TargetRel) -or -not (Test-SafeRelativePath $SourceRel)) {
+        throw "subproject link paths must stay inside the host repository"
+    }
     $Source = Join-Path $HostRoot $SourceRel
     $Target = Join-Path $HostRoot $TargetRel
 
@@ -123,7 +233,9 @@ Get-Content $SubprojectLinks | ForEach-Object {
         return
     }
 
+    Assert-SafeSource $Source
     $Parent = Split-Path $Target -Parent
+    Assert-SafeTargetParent $Target
     if (-not (Test-Path $Parent)) {
         if ($DryRun) {
             Write-Output "would_mkdir $Parent"
@@ -141,7 +253,7 @@ Get-Content $SubprojectLinks | ForEach-Object {
             Write-Output "would_replace_subproject $TargetRel"
             return
         }
-        Remove-Item $Target -Recurse -Force
+        Remove-SafeTarget $Target
     }
 
     if ($DryRun) {
@@ -149,6 +261,7 @@ Get-Content $SubprojectLinks | ForEach-Object {
         return
     }
 
+    Assert-SafeTargetParent $Target
     New-Item -ItemType Junction -Path $Target -Target $Source | Out-Null
     Write-Output "linked_subproject $TargetRel"
 }

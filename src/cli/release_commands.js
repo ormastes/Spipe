@@ -4,9 +4,10 @@ const commandOperations = Object.freeze({
   "release-session-plan": "isolated-session",
   "release-beta-backport-plan": "beta-backport",
   "release-candidate-plan": "candidate",
-  "release-promotion-plan": "promotion"
-  ,"release-main-fix-discovery-plan": "main-fix-discovery"
-  ,"release-forward-port-plan": "forward-port"
+  "release-promotion-plan": "promotion",
+  "release-withdrawal-plan": "withdrawal",
+  "release-main-fix-discovery-plan": "main-fix-discovery",
+  "release-forward-port-plan": "forward-port"
 });
 
 export function runReleaseCommand(command, args) {
