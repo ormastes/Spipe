@@ -16,14 +16,15 @@
   "interface": {
     "displayName": "SPipe",
     "shortDescription": "Guarded software-release planning and process tools",
-    "longDescription": "Plan isolated release sessions, beta convergence, immutable candidates, and exact promotion without granting repository mutation authority.",
+    "longDescription": "Plan isolated release sessions and exact promotion, and create broker-bound review requests without granting repository mutation authority.",
     "developerName": "Simple Project",
     "category": "Developer Tools",
     "capabilities": ["Read", "Planning"],
     "defaultPrompt": [
       "Plan an isolated beta release.",
       "Check reviewed fixes for beta backporting.",
-      "Validate an immutable candidate promotion."
+      "Validate an immutable candidate promotion.",
+      "Create a server-side review request for a repository, pull request, session, or feature."
     ]
   }
 }

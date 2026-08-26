@@ -3,6 +3,12 @@ import { join } from "node:path";
 import { releaseCapabilities, releaseContractHash, releaseOperations, releaseSchemas } from "../../src/release/contract.js";
 import { createReleasePlan } from "../../src/release/planner.js";
 import { checkVersionAuthority } from "../../src/release/version.js";
+import { createReviewRequest, validateReviewAdmission } from "../../src/review/admission.js";
+import { configuredReviewAuthority } from "../../src/review/broker.js";
+import {
+  fallbackAdmissionFields, independentAdmissionFields, reviewCapabilities,
+  reviewRequestFields, reviewSchemas
+} from "../../src/review/contract.js";
 
 const booleanFields = new Set(["read_only_snapshot", "main_is_independent_trunk", "forward_port_required", "release_first_exception_approved", "reviewed", "main_tests_renewed", "protected_ref_direct_update", "signed_tag", "annotated_tag", "exact_tag_push", "rebuild", "fallback_artifact", "release_authority_approved", "published_tag_preserved", "published_assets_preserved", "history_preserved", "replacement_is_new_version", "withdrawal_authority_approved"]);
 const integerFields = new Set(["attempt", "candidate_attempt", "interval_seconds", "last_scan_epoch", "now_epoch"]);
@@ -17,6 +23,17 @@ function releasePlanSchema(operation) {
     additionalProperties: false
   };
 }
+
+const reviewIntegers = new Set(["pull_request_number"]);
+const reviewArrays = new Set(["required_checks", "findings"]);
+const reviewObjects = new Set(["verifier", "attestor"]);
+function reviewProperties(fields) {
+  return Object.fromEntries(fields.map((field) => [field, {
+    type: reviewIntegers.has(field) ? "integer" : reviewArrays.has(field) ? "array" : reviewObjects.has(field) ? "object" : "string"
+  }]));
+}
+const reviewRequestSchema = Object.freeze({ type: "object", properties: reviewProperties(reviewRequestFields), required: [...reviewRequestFields], additionalProperties: false });
+const reviewAdmissionSchema = Object.freeze({ oneOf: [independentAdmissionFields, fallbackAdmissionFields].map((fields) => ({ type: "object", properties: reviewProperties(fields), required: [...fields], additionalProperties: false })) });
 
 export const tools = Object.freeze([
   { name: "spipe_info", description: "Return SPipe module paths and link surfaces.", inputSchema: { type: "object", properties: {} } },
@@ -42,7 +59,10 @@ export const tools = Object.freeze([
   { name: "spipe_release_promotion_plan", description: "Validate exact admitted promotion inputs. Performs no tag, push, delete, rebuild, or publication.", inputSchema: releasePlanSchema("promotion") },
   { name: "spipe_release_withdrawal_plan", description: "Validate a non-destructive published-release withdrawal. Preserves tags, assets, artifacts, and history.", inputSchema: releasePlanSchema("withdrawal") },
   { name: "spipe_release_main_fix_discovery_plan", description: "Check supplied immutable snapshots for reviewed bug-fix candidates. Never selects or cherry-picks a fix.", inputSchema: releasePlanSchema("main-fix-discovery") },
-  { name: "spipe_release_forward_port_plan", description: "Validate an isolated main forward-port for an approved release-first fix. Never pushes a protected ref.", inputSchema: releasePlanSchema("forward-port") }
+  { name: "spipe_release_forward_port_plan", description: "Validate an isolated main forward-port for an approved release-first fix. Never pushes a protected ref.", inputSchema: releasePlanSchema("forward-port") },
+  { name: "spipe_review_request_create", description: "Create a non-mutating repo/PR/session/feature review request. Caller head SHAs are rejected; the broker resolves the head.", inputSchema: reviewRequestSchema },
+  { name: "spipe_review_admission_validate", description: "Validate an exact-head, exact-check review receipt through the configured pinned broker. Unavailable without broker authority.", inputSchema: reviewAdmissionSchema },
+  { name: "spipe_review_capabilities", description: "Return review request/admission schemas and fail-closed broker capabilities.", inputSchema: { type: "object", properties: {}, additionalProperties: false } }
 ]);
 
 function text(content) {
@@ -79,7 +99,7 @@ export function readDoc(moduleRoot, path) {
   return readFileSync(abs, "utf8");
 }
 
-export function callTool(moduleRoot, name, args = {}) {
+export function callTool(moduleRoot, name, args = {}, options = {}) {
   if (name === "spipe_info") {
     return text([
       `module=${moduleRoot}`,
@@ -109,6 +129,12 @@ export function callTool(moduleRoot, name, args = {}) {
     `contract_sha256=${releaseContractHash()}`
   ].join("\n"));
   if (name === "spipe_release_version_check") return text(JSON.stringify(checkVersionAuthority(moduleRoot), null, 2));
+  if (name === "spipe_review_capabilities") return text([
+    ...Object.entries(reviewSchemas).map(([key, value]) => `${key}=${value}`),
+    ...Object.entries(reviewCapabilities).map(([key, value]) => `${key}=${value}`)
+  ].join("\n"));
+  if (name === "spipe_review_request_create") return text(JSON.stringify(createReviewRequest(args), null, 2));
+  if (name === "spipe_review_admission_validate") return text(JSON.stringify(validateReviewAdmission(args, options.reviewAuthority || configuredReviewAuthority()), null, 2));
   const releaseTools = {
     spipe_release_session_plan: "isolated-session",
     spipe_release_beta_backport_plan: "beta-backport",

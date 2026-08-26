@@ -12,6 +12,8 @@ plugin:
     session: spipe-session/1
     release: spipe-release/1
     candidate: spipe-candidate/1
+    review_request: spipe-review-request/1
+    review_admission: spipe-review-admission/1
   capabilities:
     isolated_sessions: true
     reviewed_beta_backports: true
@@ -22,3 +24,7 @@ plugin:
     main_fix_discovery_planning: true
     release_first_forward_port_validation: true
     external_release_mutation: false
+    non_mutating_review_requests: true
+    server_resolved_review_heads: true
+    broker_verified_review_admission: true
+    external_review_mutation: false

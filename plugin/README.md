@@ -13,3 +13,7 @@ promote-without-rebuild, and non-destructive withdrawal. The CLI and MCP
 interfaces validate and hash supplied evidence but do not execute Git, builds,
 tags, pushes, deletions, overwrites, or publication. Installing the plugin does
 not confer protected repository or publication authority.
+
+The plugin also projects non-mutating repo/PR/session/feature review requests
+and broker-verified `spipe-review-admission/1` validation. It cannot emit a
+PASS status without separately configured dedicated broker authority.

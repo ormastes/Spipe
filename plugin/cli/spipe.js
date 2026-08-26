@@ -4,6 +4,8 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseCapabilities, releaseContractHash, releaseSchemas } from "../src/release/contract.js";
 import { runReleaseCommand } from "../src/cli/release_commands.js";
+import { runReviewCommand } from "../src/cli/review_commands.js";
+import { reviewCapabilities, reviewSchemas } from "../src/review/contract.js";
 import { canonicalVersion, checkVersionAuthority } from "../src/release/version.js";
 
 const moduleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,6 +39,11 @@ Commands:
                        Check a read-only main snapshot for reviewed bug-fix candidates.
   release-forward-port-plan <json>
                        Validate an isolated forward-port for a release-first fix.
+  review-request-create <json>
+                       Create a closed non-mutating repo/PR/session/feature review request.
+  review-admission-validate <json>
+                       Validate a broker-issued exact-head review admission receipt.
+  review-capabilities  Print review request/admission schemas and capabilities.
   fine-tune-guide      Print the LLM fine-tune process guide.
   fine-tune-model-guide
                        Print the LLM base-model research guide.
@@ -1538,6 +1545,10 @@ switch (command) {
     for (const [name, value] of Object.entries(releaseCapabilities)) console.log(`capability.${name}=${value}`);
     console.log(`contract.sha256=${releaseContractHash()}`);
     break;
+  case "review-capabilities":
+    for (const [name, value] of Object.entries(reviewSchemas)) console.log(`schema.${name}=${value}`);
+    for (const [name, value] of Object.entries(reviewCapabilities)) console.log(`capability.${name}=${value}`);
+    break;
   case "release-session-plan":
   case "release-beta-backport-plan":
   case "release-candidate-plan":
@@ -1547,6 +1558,15 @@ switch (command) {
   case "release-forward-port-plan":
     try {
       runReleaseCommand(command, args);
+    } catch (error) {
+      console.error(`spipe: ${error.message}`);
+      process.exitCode = 2;
+    }
+    break;
+  case "review-request-create":
+  case "review-admission-validate":
+    try {
+      runReviewCommand(command, args);
     } catch (error) {
       console.error(`spipe: ${error.message}`);
       process.exitCode = 2;

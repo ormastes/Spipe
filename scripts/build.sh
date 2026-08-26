@@ -12,6 +12,7 @@ doc/00_llm_process/spipe/skill.md
 doc/00_llm_process/spipe/llm_finetune.md
 doc/00_llm_process/spipe/llm_model_research.md
 doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn
+doc/00_llm_process/spipe/review_admission.md
 doc/00_llm_process/skill_command
 doc/00_llm_process/template
 doc/00_llm_process/project_expert
@@ -39,7 +40,12 @@ mcp/server.js
 src/release/contract.js
 src/release/planner.js
 src/release/version.js
+src/review/contract.js
+src/review/admission.js
+src/review/broker.js
+src/cli/review_commands.js
 test/unit/release_policy_test.js
+test/unit/review_admission_test.js
 test/windows/setup_spipe_links_containment.ps1
 plugin/.codex-plugin/plugin.json
 plugin/package.json
@@ -61,6 +67,11 @@ plugin/scripts/setup-spipe-links.ps1
 plugin/src/release/contract.js
 plugin/src/release/planner.js
 plugin/src/release/version.js
+plugin/src/review/contract.js
+plugin/src/review/admission.js
+plugin/src/review/broker.js
+plugin/src/cli/review_commands.js
+plugin/doc/00_llm_process/spipe/review_admission.md
 plugin/doc/00_llm_process/skill_command/command/release.md
 plugin/doc/00_llm_process/spipe/skill.md
 plugin/doc/00_llm_process/template/feature_skill.md
@@ -100,6 +111,7 @@ grep -q 'unix: scripts/setup-spipe-links.sh$' plugin/manifest.sdn
 cmp mcp/server.js plugin/mcp/server.js
 cmp cli/spipe.js plugin/cli/spipe.js
 cmp src/cli/release_commands.js plugin/src/cli/release_commands.js
+cmp src/cli/review_commands.js plugin/src/cli/review_commands.js
 cmp scripts/setup-spipe-links.sh plugin/scripts/setup-spipe-links.sh
 cmp scripts/setup-spipe-links.ps1 plugin/scripts/setup-spipe-links.ps1
 cmp mcp/protocol/errors.js plugin/mcp/protocol/errors.js
@@ -112,9 +124,14 @@ cmp src/format/stable.js plugin/src/format/stable.js
 cmp src/release/contract.js plugin/src/release/contract.js
 cmp src/release/planner.js plugin/src/release/planner.js
 cmp src/release/version.js plugin/src/release/version.js
+cmp src/review/contract.js plugin/src/review/contract.js
+cmp src/review/admission.js plugin/src/review/admission.js
+cmp src/review/broker.js plugin/src/review/broker.js
+cmp doc/00_llm_process/spipe/review_admission.md plugin/doc/00_llm_process/spipe/review_admission.md
 cmp doc/00_llm_process/skill_command/command/release.md plugin/doc/00_llm_process/skill_command/command/release.md
 printf '%s\n' '{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_promotion_plan"
 printf '%s\n' '{"jsonrpc":"2.0","id":51,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_withdrawal_plan"
+printf '%s\n' '{"jsonrpc":"2.0","id":52,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_review_admission_validate"
 printf '%s\n' '{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"spipe://skill"}}' | node plugin/mcp/server.js | grep -q "SPipe"
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_fine_tune_guide"
 printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"spipe_fine_tune_template","arguments":{}}}' | node mcp/server.js | grep -q "attempt_id"
@@ -128,6 +145,7 @@ node cli/spipe.js release-guide >/dev/null
 node cli/spipe.js release-capabilities | grep -q "capability.immutable_release_candidates=true"
 node cli/spipe.js release-capabilities | grep -q "capability.non_destructive_withdrawal_planning=true"
 node cli/spipe.js release-capabilities | grep -q "capability.external_release_mutation=false"
+node cli/spipe.js review-capabilities | grep -q "capability.broker_verified_review_admission=true"
 node cli/spipe.js release-version-check | grep -q '"valid": true'
 node plugin/cli/spipe.js release-version-check | grep -q '"valid": true'
 test "$(node plugin/cli/spipe.js --version)" = "$canonical_version"
@@ -156,9 +174,12 @@ test -f "$installed_package/release/version.sdn"
 npm --prefix "$tmp_install" exec --offline -- spipe --version | grep -qx "$canonical_version"
 printf '%s\n' '{"jsonrpc":"2.0","id":43,"method":"initialize","params":{}}' |
   npm --prefix "$tmp_install" exec --offline -- spipe-mcp | grep -q "\"version\":\"$canonical_version\""
+printf '%s\n' '{"jsonrpc":"2.0","id":44,"method":"tools/list","params":{}}' |
+  npm --prefix "$tmp_install" exec --offline -- spipe-mcp | grep -q "spipe_review_request_create"
 rm -rf "$tmp_pack" "$tmp_install"
 
 node --test test/unit/release_policy_test.js
+node --test test/unit/review_admission_test.js
 
 tmp_host="$(mktemp -d)"
 trap 'rm -rf "$tmp_host"' EXIT

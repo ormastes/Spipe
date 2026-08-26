@@ -15,6 +15,8 @@ node cli/spipe.js skill
 node cli/spipe.js release-guide
 node cli/spipe.js release-capabilities
 node cli/spipe.js release-version-check
+node cli/spipe.js review-request-create '<json>'
+node cli/spipe.js review-admission-validate '<json>'
 ```
 
 The release commands are read-only. `release-guide` prints the canonical
@@ -30,6 +32,11 @@ The guarded operational commands each accept exactly one JSON object:
 `release-candidate-plan`, `release-promotion-plan`, and
 `release-withdrawal-plan`. They validate and hash evidence but never checkout,
 cherry-pick, build, tag, push, delete, overwrite, or publish.
+
+Review requests cover repo/PR/session/feature scopes and reject caller-supplied
+head SHAs. Admission validation is unavailable unless a dedicated review broker
+command and pinned integration ID are configured server-side; the broker
+re-resolves the live head and exact check set before PASS is accepted.
 
 Fine-tune process examples:
 

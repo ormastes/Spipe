@@ -27,6 +27,7 @@ node cli/spipe.js experts
 node cli/spipe.js doctor ../..
 node cli/spipe.js release-guide
 node cli/spipe.js release-capabilities
+node cli/spipe.js review-capabilities
 node mcp/server.js
 ```
 
@@ -62,6 +63,15 @@ node cli/spipe.js release-withdrawal-plan '<json>'
 
 External protected authorities remain responsible for reviewed integration,
 signed annotated tag creation, exact single-tag push, and publication.
+
+## Server-side review admission
+
+`review-request-create` creates a closed non-mutating request for a repository,
+pull request, isolated session, or feature. Requests cannot supply a head SHA.
+`review-admission-validate` accepts only a current, unexpired receipt verified
+by a configured dedicated broker whose integration ID is pinned by the server.
+See `doc/00_llm_process/spipe/review_admission.md` for the receipt and trust
+boundary. Neither command replaces release or npm environment approvals.
 
 The CLI also owns the reusable LLM fine-tune process. It can initialize host
 attempt registries, record data downloads, model research, base-model choice,
