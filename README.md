@@ -25,6 +25,8 @@ The package exposes two dependency-free Node entrypoints:
 node cli/spipe.js info
 node cli/spipe.js experts
 node cli/spipe.js doctor ../..
+node cli/spipe.js release-guide
+node cli/spipe.js release-capabilities
 node mcp/server.js
 ```
 
@@ -34,6 +36,31 @@ such as `.spipe/doc`, `.spipe/spipe_project`, `.spipe/spipe`, and
 
 When installed as an npm-style package, the binaries are `spipe` and
 `spipe-mcp`.
+
+Protected release operations are guarded planning surfaces, not mutation
+authority. The CLI and MCP server validate isolated sessions, periodic
+read-only discovery of reviewed fixes on the independent `main` trunk, explicit
+beta backports, mandatory forward-ports for approved release-first fixes,
+immutable build-once candidates, and promotion without rebuild. They never
+select or cherry-pick a fix, update a protected ref, build, tag, push, delete,
+or publish.
+
+## Guarded release operations
+
+Each planner accepts one exact JSON object and returns a hashed, non-mutating
+plan:
+
+```sh
+node cli/spipe.js release-session-plan '<json>'
+node cli/spipe.js release-main-fix-discovery-plan '<json>'
+node cli/spipe.js release-beta-backport-plan '<json>'
+node cli/spipe.js release-forward-port-plan '<json>'
+node cli/spipe.js release-candidate-plan '<json>'
+node cli/spipe.js release-promotion-plan '<json>'
+```
+
+External protected authorities remain responsible for reviewed integration,
+signed annotated tag creation, exact single-tag push, and publication.
 
 The CLI also owns the reusable LLM fine-tune process. It can initialize host
 attempt registries, record data downloads, model research, base-model choice,

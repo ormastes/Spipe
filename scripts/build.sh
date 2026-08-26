@@ -17,16 +17,48 @@ doc/00_llm_process/project_expert/subproject_links.example.sdn
 doc/00_llm_process/domain_expert
 doc/00_llm_process/tool_expert
 .claude/skills/spipe.md
+.claude/skills/software-release.md
+.claude/skills/release.md
+.claude/skills/sync.md
 .claude/templates/spipe_template.spl
 .codex/skills/dev/SKILL.md
 .codex/skills/sp_dev/SKILL.md
+.codex/skills/software-release/SKILL.md
+.codex/skills/release/SKILL.md
+.codex/skills/sync/SKILL.md
 .gemini/commands/dev.toml
 .gemini/commands/sp_dev.toml
+.gemini/commands/release.toml
+.gemini/commands/sync.toml
 package.json
 cli/spipe.js
 mcp/server.js
+src/release/contract.js
+src/release/planner.js
+test/unit/release_policy_test.js
 plugin/.codex-plugin/plugin.json
 plugin/manifest.sdn
+plugin/skills/software-release/SKILL.md
+plugin/skills/release/SKILL.md
+plugin/skills/sync/SKILL.md
+plugin/skills/spipe/SKILL.md
+plugin/skills/spipe-loop/SKILL.md
+plugin/skills/sstack/SKILL.md
+plugin/skills/dev/SKILL.md
+plugin/skills/sp-dev/SKILL.md
+plugin/mcp/server.js
+plugin/cli/spipe.js
+plugin/scripts/setup-spipe-links.sh
+plugin/scripts/setup-spipe-links.ps1
+plugin/src/release/contract.js
+plugin/src/release/planner.js
+plugin/doc/00_llm_process/skill_command/command/release.md
+plugin/doc/00_llm_process/spipe/skill.md
+plugin/doc/00_llm_process/template/feature_skill.md
+plugin/doc/00_llm_process/project_expert/README.md
+plugin/doc/00_llm_process/domain_expert/README.md
+plugin/doc/00_llm_process/tool_expert/README.md
+scripts/setup-spipe-links.sh
 plugin
 mcp
 cli
@@ -53,6 +85,19 @@ if git -C ../.. rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   diff -qr -x .git ../../examples/spipe ../../.spipe/spipe >/dev/null
 fi
 node -e 'const p=require("./package.json"); if (p.bin.spipe !== "cli/spipe.js" || p.bin["spipe-mcp"] !== "mcp/server.js") process.exit(1)'
+node -e 'const p=require("./plugin/.codex-plugin/plugin.json"); if (p.skills !== "./skills/" || Object.hasOwn(p, "commands")) process.exit(1)'
+grep -q 'unix: scripts/setup-spipe-links.sh$' plugin/manifest.sdn
+cmp mcp/server.js plugin/mcp/server.js
+cmp cli/spipe.js plugin/cli/spipe.js
+cmp src/cli/release_commands.js plugin/src/cli/release_commands.js
+cmp scripts/setup-spipe-links.sh plugin/scripts/setup-spipe-links.sh
+cmp scripts/setup-spipe-links.ps1 plugin/scripts/setup-spipe-links.ps1
+cmp mcp/protocol/tools.js plugin/mcp/protocol/tools.js
+cmp src/release/contract.js plugin/src/release/contract.js
+cmp src/release/planner.js plugin/src/release/planner.js
+cmp doc/00_llm_process/skill_command/command/release.md plugin/doc/00_llm_process/skill_command/command/release.md
+printf '%s\n' '{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_promotion_plan"
+printf '%s\n' '{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"spipe://skill"}}' | node plugin/mcp/server.js | grep -q "SPipe"
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_fine_tune_guide"
 printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"spipe_fine_tune_template","arguments":{}}}' | node mcp/server.js | grep -q "attempt_id"
 node cli/spipe.js info >/dev/null
@@ -67,6 +112,12 @@ node cli/spipe.js doctor ../.. | grep -q "host_ok spipe_docs_link"
 node cli/spipe.js fine-tune-guide >/dev/null
 node cli/spipe.js fine-tune-model-guide >/dev/null
 node cli/spipe.js fine-tune-template >/dev/null
+node cli/spipe.js release-guide >/dev/null
+node cli/spipe.js release-capabilities | grep -q "capability.immutable_release_candidates=true"
+node cli/spipe.js release-capabilities | grep -q "capability.external_release_mutation=false"
+printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"spipe_release_capabilities","arguments":{}}}' | node mcp/server.js | grep -q "immutable_release_candidates=true"
+printf '%s\n' '{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_release_main_fix_discovery_plan"
+node --test test/unit/release_policy_test.js
 
 tmp_link_host="$(mktemp -d)"
 tmp_host="$(mktemp -d)"
