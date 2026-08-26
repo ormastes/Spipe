@@ -160,9 +160,13 @@ rm -rf "$tmp_pack" "$tmp_install"
 
 node --test test/unit/release_policy_test.js
 
+tmp_host="$(mktemp -d)"
+trap 'rm -rf "$tmp_host"' EXIT
+case "$(uname -s)" in
+MINGW*|MSYS*|CYGWIN*) ;;
+*)
 tmp_link_host="$(mktemp -d)"
 tmp_link_outside="$(mktemp -d)"
-tmp_host="$(mktemp -d)"
 trap 'rm -rf "$tmp_host" "$tmp_link_host" "$tmp_link_outside"' EXIT
 SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run | grep -q "doc/llm_process/spipe"
 test ! -e "$tmp_link_host/doc"
@@ -199,6 +203,8 @@ printf 'docs:\n  host_process_doc: doc/00_llm_process\n' > "$tmp_link_host/.spip
 SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run | grep -q "doc/00_llm_process/spipe"
 node cli/spipe.js doc-root "$tmp_link_host" | grep -q "^doc/00_llm_process$"
 node cli/spipe.js link-plan "$tmp_link_host" | grep -q "target=${tmp_link_host}/doc/00_llm_process/spipe"
+;;
+esac
 (cd "$tmp_host" && node "$ROOT_DIR/cli/spipe.js" fine-tune-init >/dev/null)
 test -f "$tmp_host/.spipe/llm-finetune-process/attempts/template.sdn"
 mkdir -p "$tmp_host/doc/02_requirements/feature" "$tmp_host/doc/02_requirements/nfr"
