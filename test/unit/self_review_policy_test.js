@@ -97,7 +97,18 @@ test("policy trust rejects forgery, authority replacement, truncation, duplicate
   assert.throws(() => parseSelfReviewPolicy(duplicate, policyTrust(duplicate)), /duplicate key: default_allow/);
   const otherKeys = generateKeyPairSync("ed25519"); const wrongKey = otherKeys.publicKey.export({ type: "spki", format: "pem" });
   assert.throws(() => parseSelfReviewPolicy(fixture.content, { ...fixture.trust, public_key_pem: wrongKey }), /signature failed Ed25519 verification/);
-  const directory = mkdtempSync(join(tmpdir(), "spipe-policy-")); try { const policyPath = join(directory, "policy.jsonl"); const trustPath = join(directory, "trust.json"); writeFileSync(policyPath, Buffer.from([0xc3, 0x28])); writeFileSync(trustPath, JSON.stringify(fixture.trust)); assert.throws(() => loadSelfReviewPolicy(policyPath, trustPath), /not valid UTF-8/); } finally { rmSync(directory, { recursive: true, force: true }); }
+  const directory = mkdtempSync(join(tmpdir(), "spipe-policy-")); try { const policyPath = join(directory, "policy.jsonl"); const trustPath = join(directory, "trust.json"); const invalidPolicy = Buffer.from([0xc3, 0x28]); writeFileSync(policyPath, invalidPolicy); writeFileSync(trustPath, JSON.stringify({ ...fixture.trust, expected_policy_db_sha256: sha256(invalidPolicy) })); assert.throws(() => loadSelfReviewPolicy(policyPath, trustPath), /not valid UTF-8/); } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("policy and trust loaders reject UTF-8 BOM before parsing", () => {
+  const fixture = policyFixture(subject([change("src/main.spl")])); const directory = mkdtempSync(join(tmpdir(), "spipe-policy-bom-"));
+  try {
+    const policyPath = join(directory, "policy.jsonl"); const trustPath = join(directory, "trust.json");
+    writeFileSync(policyPath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(fixture.content)])); writeFileSync(trustPath, JSON.stringify(fixture.trust));
+    assert.throws(() => loadSelfReviewPolicy(policyPath, trustPath), /policy DB must not contain a UTF-8 BOM/);
+    writeFileSync(policyPath, fixture.content); writeFileSync(trustPath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(JSON.stringify(fixture.trust))]));
+    assert.throws(() => loadSelfReviewPolicy(policyPath, trustPath), /policy trust must not contain a UTF-8 BOM/);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test("default allow covers ordinary code, text, and review policy after exact higher-model PASS", () => {

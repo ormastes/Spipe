@@ -165,8 +165,9 @@ parser verifies that signature with the independently pinned public key, and
 requires header and record authority to equal pinned trust. The independently
 pinned whole-database digest makes record replacement, reordering, and tail
 truncation fail even when the unkeyed hash chain remains internally shaped.
-Policy and trust file loading uses fatal UTF-8 decoding; duplicate JSON object
-keys (including escape aliases), replacement bytes, CRLF, blank records, and
+Policy and trust file loading rejects a leading UTF-8 BOM and uses fatal UTF-8
+decoding. The policy digest is verified over the exact raw bytes before decode.
+Duplicate JSON object keys (including escape aliases), replacement bytes, CRLF, blank records, and
 surrounding record whitespace are rejected before authorization.
 
 Both historical `/1` shapes are rejected: Spipe's old header omitted authority
