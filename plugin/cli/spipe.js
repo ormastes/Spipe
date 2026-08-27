@@ -1558,7 +1558,7 @@ switch (command) {
     console.log(readFileSync(join(moduleRoot, "doc/00_llm_process/skill_command/command/release.md"), "utf8"));
     break;
   case "self-review-guide":
-    console.log(readFileSync(join(moduleRoot, "doc/00_llm_process/spipe/review_admission.md"), "utf8"));
+    console.log(readFileSync(join(moduleRoot, "doc/00_llm_process/spipe/self_review_skill.md"), "utf8"));
     break;
   case "release-capabilities":
     for (const [name, value] of Object.entries(releaseSchemas)) console.log(`schema.${name}=${value}`);

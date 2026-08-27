@@ -153,7 +153,7 @@ export function callTool(moduleRoot, name, args = {}, options = {}) {
   if (name === "spipe_fine_tune_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/llm_finetune.md"));
   if (name === "spipe_fine_tune_model_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/llm_model_research.md"));
   if (name === "spipe_fine_tune_template") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn"));
-  if (name === "spipe_self_review_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/review_admission.md"));
+  if (name === "spipe_self_review_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/self_review_skill.md"));
   if (name === "spipe_release_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/skill_command/command/release.md"));
   if (name === "spipe_release_capabilities") return text([
     ...Object.entries(releaseSchemas).map(([key, value]) => `${key}=${value}`),
