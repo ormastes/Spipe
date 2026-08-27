@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -11,7 +12,8 @@ import { tools as pluginTools } from "../../plugin/mcp/protocol/tools.js";
 const head = "a".repeat(40); const baseHead = "9".repeat(40); const mergeBase = "8".repeat(40); const blob = "b".repeat(40); const receipt = "c".repeat(64); const authorizationReceipt = "e".repeat(64);
 const now = new Date("2026-08-27T12:00:00.000Z");
 function request(overrides = {}) { return { schema: selfReviewSchemas.request, repo_id: "42", pull_request: 7, session_id: "session-7", reviewer_id: "codex:session-7", reviewer_provider: "openai", reviewer_model: "gpt-5.6-sol", higher_model_receipt_digest: receipt, user_authorization_actor: "github:user:2378857", user_authorization_receipt_digest: authorizationReceipt, user_authorized_at: "2026-08-27T10:30:00.000Z", request_id: "self-review-7", ...overrides }; }
-function policy(...records) { return parseSelfReviewPolicy([JSON.stringify({ schema: selfReviewSchemas.policy_db, record_type: "header", default_allow: true }), ...records.map(JSON.stringify)].join("\n")); }
+const policyAuthority = { type: "operator_owned_external", id: "github:user:2378857", key_id: "operator-key-1" };
+function policy(...records) { return parseSelfReviewPolicy([JSON.stringify({ schema: selfReviewSchemas.policy_db, record_type: "header", default_allow: true, max_ttl_seconds: 86400, authority: policyAuthority }), ...records.map(JSON.stringify)].join("\n")); }
 function change(path, overrides = {}) { return { status: "modified", old_path: path, new_path: path, old_blob_sha: blob, new_blob_sha: "d".repeat(40), old_mode: "100644", new_mode: "100644", semantic_flags: [], ...overrides }; }
 function manifest(changes) { return { schema: selfReviewSchemas.path_manifest, repository: { provider: "github", id: 42, node_id: "R_42", name: "ormastes/Simple" }, pull_request_number: 7, head_sha: head, base_repository: { provider: "github", id: 42, node_id: "R_42", name: "ormastes/Simple" }, base_ref: "refs/heads/main", base_sha: baseHead, merge_base_sha: mergeBase, changes }; }
 function authority(changes, overrides = {}) {
@@ -23,7 +25,7 @@ function authority(changes, overrides = {}) {
     admitSelfReview: (command) => { const result = { admitted: true, integration_id: "github-app:31415", repo_id: command.repo_id, pull_request: command.pull_request, session_id: command.session_id, request_id: command.request_id, head_sha: command.head_sha, base_repo_id: command.base_repo_id, base_ref: command.base_ref, base_sha: command.base_sha, merge_base_sha: command.merge_base_sha, diff_sha256: command.diff_sha256, target_repo_id: command.target_repo_id, target_ref: command.target_ref, target_ruleset_id: command.target_ruleset_id, strict_up_to_date: command.strict_up_to_date, protected_target: command.protected_target, changed_paths_manifest_sha256: command.changed_paths_manifest_sha256, user_authorization_actor: command.user_authorization_actor, user_authorization_receipt_digest: command.user_authorization_receipt_digest, user_authorized_at: command.user_authorized_at, policy_audit_digest: command.policy_audit_digest, status_context: "SPipe Self Review Admission", check_run_id: "check:99", admitted_at: "2026-08-27T12:00:00.000Z", expires_at: command.expires_at, invalidation_registered: true, invalidation_at: command.expires_at, invalidation_mode: command.invalidation_mode, ...overrides.admission }; if (overrides.omit_admission_field) delete result[overrides.omit_admission_field]; return result; }
   };
 }
-function subject(overrides = {}) { return { schema: selfReviewSchemas.subject_policy, record_type: "subject_policy", policy_id: "policy-1", effect: "deny", repository_id: "42", session_id: "session-7", reviewer_id: "codex:session-7", allow_scopes: [], deny_scopes: [], issued_by: { type: "User", id: 2378857 }, issued_at: "2026-08-27T10:00:00.000Z", not_before: "2026-08-27T10:00:00.000Z", expires_at: "2026-08-27T14:00:00.000Z", issuer_key_id: "owner:key-1", previous_record_sha256: "", signature: "test-signature", ...overrides }; }
+function subject(changes, overrides = {}) { const exact = manifest(changes); return { schema: selfReviewSchemas.subject_policy, record_type: "subject_policy", policy_id: "policy-1", effect: "deny", subject: { repository: exact.repository, pull_request_number: exact.pull_request_number, head_sha: exact.head_sha, session_id: "session-7", reviewer: { provider: "openai", id: "codex:session-7", model: "gpt-5.6-sol" } }, changed_paths_manifest_sha256: changedPathsManifestDigest(exact), higher_model_receipt_digest: receipt, allow_scopes: [], deny_scopes: [], issued_by: policyAuthority, issued_at: "2026-08-27T10:00:00.000Z", not_before: "2026-08-27T10:00:00.000Z", expires_at: "2026-08-27T14:00:00.000Z", previous_record_sha256: "0".repeat(64), signature: "a".repeat(64), ...overrides }; }
 
 test("headless request plan cannot accept caller head or diff", () => {
   const planned = planSelfReviewRequest(request(), now);
@@ -53,6 +55,26 @@ test("MCP and plugin expose identical headless evaluate/admit request schemas", 
   }
 });
 
+test("canonical policy DB v2 rejects both incompatible v1 shapes and authority ambiguity", () => {
+  const simpleV1 = `${JSON.stringify({ schema: "spipe-self-review-policy-db/1", default_allow: true, max_ttl_seconds: 86400, authority: "operator_owned_external" })}\n`;
+  const spipeV1 = `${JSON.stringify({ schema: "spipe-self-review-policy-db/1", record_type: "header", default_allow: true })}\n`;
+  assert.throws(() => parseSelfReviewPolicy(simpleV1), /missing fields: record_type/);
+  assert.throws(() => parseSelfReviewPolicy(spipeV1), /missing fields: max_ttl_seconds, authority/);
+  const header = { schema: selfReviewSchemas.policy_db, record_type: "header", default_allow: true, max_ttl_seconds: 86400, authority: policyAuthority };
+  const payload = JSON.stringify(header); const parsed = parseSelfReviewPolicy(payload);
+  assert.equal(parsed.policy_db_sha256, createHash("sha256").update(payload).digest("hex"));
+  assert.throws(() => parseSelfReviewPolicy(JSON.stringify({ ...header, max_ttl_seconds: 86401 })), /within 24 hours/);
+  assert.throws(() => parseSelfReviewPolicy(JSON.stringify({ ...header, authority: { ...policyAuthority, type: "self_attested" } })), /operator_owned_external/);
+  assert.throws(() => parseSelfReviewPolicy(` ${payload}`), /canonical non-empty JSONL/);
+  const changes = [change("src/main.spl")];
+  assert.throws(() => policy(subject(changes, { issued_at: "1787846400" })), /canonical UTC ISO timestamp/);
+  assert.throws(() => policy(subject(changes, { expires_at: "2026-08-28T10:00:01.000Z" })), /max_ttl_seconds/);
+  assert.throws(() => policy(subject(changes, { issued_by: { ...policyAuthority, id: "github:user:other" } })), /does not match the policy DB authority/);
+  assert.throws(() => policy(subject(changes, { higher_model_receipt_digest: "self_attested" })), /higher_model_receipt_digest/);
+  const oldFlat = subject(changes); delete oldFlat.subject; Object.assign(oldFlat, { repository_id: "42", session_id: "session-7", reviewer_id: "codex:session-7", issuer_key_id: "operator-key-1" });
+  assert.throws(() => policy(oldFlat), /unknown fields/);
+});
+
 test("default allow covers ordinary code, text, and review policy after exact higher-model PASS", () => {
   const inputPolicy = policy(); const broker = authority([change("src/app/main.spl"), change("doc/guide.md"), change("src/review/admission.js")], { policy: inputPolicy });
   const decision = evaluateSelfReviewPrivilege(request(), inputPolicy, broker, now);
@@ -76,20 +98,22 @@ test("fixed secret, policy DB, and semantic authority restrictions cannot be ove
 });
 
 test("subject deny wins and constrain scopes narrow default allow", () => {
-  const deniedPolicy = policy(subject());
-  const subjectDecision = evaluateSelfReviewPrivilege(request(), deniedPolicy, authority([change("src/main.spl")], { policy: deniedPolicy }), now);
+  const deniedChanges = [change("src/main.spl")]; const deniedPolicy = policy(subject(deniedChanges));
+  const subjectDecision = evaluateSelfReviewPrivilege(request(), deniedPolicy, authority(deniedChanges, { policy: deniedPolicy }), now);
   assert.equal(subjectDecision.reason_code, "subject_denied"); assert.match(subjectDecision.remediation, /new explicit scoped policy/);
-  const constrainedPolicy = policy(subject({ effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [{ kind: "file", path: "src/app/blocked.spl" }] }));
-  assert.equal(evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/main.spl")], { policy: constrainedPolicy }), now).eligible, true);
-  const constrained = evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/nested/main.spl")], { policy: constrainedPolicy }), now);
+  const allowedChanges = [change("src/app/main.spl")]; const allowedPolicy = policy(subject(allowedChanges, { effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [{ kind: "file", path: "src/app/blocked.spl" }] }));
+  assert.equal(evaluateSelfReviewPrivilege(request(), allowedPolicy, authority(allowedChanges, { policy: allowedPolicy }), now).eligible, true);
+  const nestedChanges = [change("src/app/nested/main.spl")]; const nestedPolicy = policy(subject(nestedChanges, { effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [] }));
+  const constrained = evaluateSelfReviewPrivilege(request(), nestedPolicy, authority(nestedChanges, { policy: nestedPolicy }), now);
   assert.equal(constrained.reason_code, "constraint_not_satisfied"); assert.match(constrained.remediation, /narrow the pull request/);
-  const pathDenied = evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/blocked.spl")], { policy: constrainedPolicy }), now);
+  const blockedChanges = [change("src/app/blocked.spl")]; const blockedPolicy = policy(subject(blockedChanges, { effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [{ kind: "file", path: "src/app/blocked.spl" }] }));
+  const pathDenied = evaluateSelfReviewPrivilege(request(), blockedPolicy, authority(blockedChanges, { policy: blockedPolicy }), now);
   assert.equal(pathDenied.reason_code, "path_denied"); assert.match(pathDenied.remediation, /split the denied paths/);
 });
 
 test("rename evaluates both endpoints and symlink/traversal shapes fail closed", () => {
-  const constrainedPolicy = policy(subject({ effect: "constrain", allow_scopes: [{ kind: "directory_recursive", path: "src/new" }], deny_scopes: [] }));
   const renamed = change("src/new/file.spl", { status: "renamed", old_path: "src/old/file.spl", new_path: "src/new/file.spl" });
+  const constrainedPolicy = policy(subject([renamed], { effect: "constrain", allow_scopes: [{ kind: "directory_recursive", path: "src/new" }], deny_scopes: [] }));
   assert.equal(evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([renamed], { policy: constrainedPolicy }), now).eligible, false);
   const inputPolicy = policy();
   assert.throws(() => evaluateSelfReviewPrivilege(request(), inputPolicy, authority([change("src/../secret")], { policy: inputPolicy }), now), /traversal/);
@@ -110,7 +134,7 @@ test("broker-only approval emits an exact-head admission check, never a PR appro
   assert.throws(() => approveSelfReview(request(), inputPolicy, { integrationId: "x", resolveSelfReview: broker.resolveSelfReview }, now), /admission broker/);
   const moved = authority([change("src/main.spl")], { policy: inputPolicy, admission: { head_sha: "e".repeat(40) } });
   assert.throws(() => approveSelfReview(request(), inputPolicy, moved, now), /head_sha mismatch/);
-  const deniedPolicy = policy(subject());
+  const deniedChanges = [change("src/main.spl")]; const deniedPolicy = policy(subject(deniedChanges));
   assert.throws(() => approveSelfReview(request(), deniedPolicy, authority([change("src/main.spl")], { policy: deniedPolicy }), now), /\[subject_denied\].*remediation: Use an independent reviewer/);
 });
 

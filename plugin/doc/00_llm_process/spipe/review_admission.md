@@ -138,15 +138,30 @@ Policy is an operator-owned UTF-8 JSONL database selected only by the MCP
 process's `SPIPE_SELF_REVIEW_POLICY_DB`. Its first record is:
 
 ```json
-{"schema":"spipe-self-review-policy-db/1","record_type":"header","default_allow":true}
+{"schema":"spipe-self-review-policy-db/2","record_type":"header","default_allow":true,"max_ttl_seconds":86400,"authority":{"type":"operator_owned_external","id":"github:user:2378857","key_id":"operator-key-1"}}
 ```
 
-Signed, hash-chained subject records have effect `deny` or `constrain`. Empty
-repository/session/reviewer selectors are wildcards. A matching deny always
-wins. A constrain narrows default allow. Multiple file scopes form an exact
-file set. Rename evaluates old and new paths, copy the new path, and delete the
-old path. Absolute, traversal, non-canonical Unicode, symbolic-link, submodule,
-and malformed entries fail closed.
+Each following closed `spipe-self-review-subject-policy/2` record has
+`record_type: "subject_policy"`, effect `deny` or `constrain`, and a nested
+exact subject: repository `{provider,id,node_id,name}`, PR number, head SHA,
+session ID, and reviewer `{provider,id,model}`. It also binds the exact changed
+path manifest SHA-256 and `higher_model_receipt_digest`. `issued_by` must equal
+the header authority, timestamps are canonical RFC3339 UTC with milliseconds,
+and validity may not exceed the header TTL or 24 hours. The first
+`previous_record_sha256` is 64 zeroes; later values are SHA-256 of the exact
+preceding JSONL line. The database digest is SHA-256 of its exact UTF-8 bytes.
+
+Both historical `/1` shapes are rejected: Spipe's old header omitted authority
+and TTL, while Simple's old header omitted `record_type` and used Unix seconds,
+a different identity layout, and self-attested evidence. Those missing trust
+facts cannot be inferred by an adapter. Replace the operator-owned external
+bytes with v2 and obtain authenticated broker-signed higher-model evidence;
+never rewrite live policy implicitly or label self-attestation as a receipt.
+
+A matching deny always wins. A constrain narrows default allow. Multiple file
+scopes form an exact file set. Rename evaluates old and new paths, copy the new
+path, and delete the old path. Absolute, traversal, non-canonical Unicode,
+symbolic-link, submodule, and malformed entries fail closed.
 
 | Scope | Matches |
 |---|---|
