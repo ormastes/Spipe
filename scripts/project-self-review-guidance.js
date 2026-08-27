@@ -14,9 +14,15 @@ const targets = Object.freeze([
   ".codex/skills/sp_dev/SKILL.md",
   ".gemini/commands/dev.toml",
   ".gemini/commands/sp_dev.toml",
+  ".claude/skills/release.md",
+  ".codex/skills/release/SKILL.md",
+  ".gemini/commands/release.toml",
   "doc/00_llm_process/skill_command/skills/pipe/self-review/skill.md",
+  "doc/00_llm_process/skill_command/skills/pipe/release/repo_and_pull_req/skill.md",
+  "doc/00_llm_process/skill_command/skills/pipe/release/skill.md",
   "plugin/skills/dev/SKILL.md",
   "plugin/skills/sp-dev/SKILL.md",
+  "plugin/skills/release/SKILL.md",
   "plugin/skills/spipe/SKILL.md"
 ]);
 

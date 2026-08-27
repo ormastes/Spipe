@@ -44,6 +44,33 @@ review is therefore not an available action. See
 Do not retry `gh pr review --approve`, report a fabricated approval, or treat a
 comment as an approval.
 
+### Fast path: `spipe self-review-guide`
+
+This is the canonical discovery command for searches such as `self approve`,
+`approve PR`, and `author cannot approve`. On same-author detection or a GitHub
+author-approval rejection, print and follow these steps:
+
+1. Resolve the live PR head, then run a high-capability exact-head review at
+   `high`, `xhigh`, `max`, or `ultra`. Record the session ID, model, effort,
+   verdict, and P0/P1 counts. Stop unless the result is `PASS`, `P0=0`, `P1=0`.
+2. Dispatch the protected host workflow once. Simple's canonical dispatch is:
+
+   ```sh
+   gh workflow run review-admission.yml --ref main \
+     -f pull_request_number="$PR_NUMBER" \
+     -f session_id="$SESSION_ID" \
+     -f reviewer_model="$REVIEWER_MODEL" \
+     -f reviewer_effort="$REVIEWER_EFFORT" \
+     -f self_attestation='PASS:0:0'
+   ```
+
+3. Poll the exact resolved head for `SPipe Self Review Admission`; never accept
+   a successful check from another SHA. A push or other bound-state change
+   requires a fresh review and dispatch.
+4. Report the result as a required status check. It is not GitHub provider
+   `APPROVED` and is not independent review. A missing protected workflow,
+   policy deny, scope restriction, failed check, or stale head blocks the path.
+
 SPipe never masquerades as an independent review and never submits a provider
 pull-request approval. Instead, an operator-owned MCP server asks its pinned
 broker to emit the distinct required `SPipe Self Review Admission` check on one

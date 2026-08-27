@@ -12,6 +12,23 @@ their own pull request. Do not retry or claim a provider approval. SPipe uses a
 different merge gate: the pinned broker emits the short-lived required check
 `SPipe Self Review Admission` for one exact head, base, diff, and ruleset.
 
+If an agent asks to **self approve**, **approve PR**, or says the **author
+cannot approve**, run the one discovery command `spipe self-review-guide` (or
+`node cli/spipe.js self-review-guide` from this checkout). Then follow this
+exact workflow:
+
+1. Resolve the live PR head and perform a `high`, `xhigh`, `max`, or `ultra`
+   review of that exact head. Record the session, model, effort, verdict, and
+   finding counts; continue only for `PASS` with `P0=0` and `P1=0`.
+2. Dispatch the protected host workflow once with the PR number, session ID,
+   reviewer model, reviewer effort, and `self_attestation=PASS:0:0`. In Simple:
+   `gh workflow run review-admission.yml --ref main -f pull_request_number="$PR_NUMBER" -f session_id="$SESSION_ID" -f reviewer_model="$REVIEWER_MODEL" -f reviewer_effort="$REVIEWER_EFFORT" -f self_attestation='PASS:0:0'`.
+3. Poll the check runs on the resolved head until `SPipe Self Review Admission`
+   succeeds or fails. Never treat a check on another SHA as evidence.
+4. If the provider rejects author `APPROVE`, or the actor and author are the
+   same, print these steps instead of retrying. A rejection, policy denial,
+   stale head, failed check, or missing protected workflow is a blocker.
+
 Eligibility is not automatic authorization. The closed request must carry a
 current user-authorization actor, timestamp, and receipt digest, and the broker
 must authenticate and repeat that evidence. Ordinary reviewed code/text is

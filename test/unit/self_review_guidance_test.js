@@ -15,15 +15,22 @@ test("CLI and MCP explain the provider limit and distinct admission action", () 
   const help = run("cli/spipe.js", "--help");
   assert.match(help, /GitHub forbids author APPROVED reviews/);
   assert.match(help, /self-review-guide/);
+  for (const query of ["self approve", "approve PR", "author cannot approve"]) assert.match(help, new RegExp(query, "i"));
   const guide = run("cli/spipe.js", "self-review-guide");
   assert.match(guide, /authors cannot approve their own pull requests/);
   assert.match(guide, /default allow means \*eligible after review\*/i);
   assert.match(guide, /constraint_not_satisfied/);
+  assert.match(guide, /high.*xhigh.*max.*ultra/s);
+  assert.match(guide, /PASS.*P0=0.*P1=0/s);
+  for (const field of ["pull_request_number", "session_id", "reviewer_model", "reviewer_effort", "self_attestation='PASS:0:0'"]) assert.match(guide, new RegExp(field));
+  assert.match(guide, /Poll the exact resolved head/);
+  assert.match(guide, /not GitHub provider\s+`APPROVED`/);
 
   assert.deepEqual(pluginTools, tools);
   const guideTool = tools.find((tool) => tool.name === "spipe_self_review_guide");
   const admitTool = tools.find((tool) => tool.name === "spipe_self_review_approve");
-  assert.match(guideTool.description, /GitHub authors cannot APPROVE/);
+  assert.match(guideTool.description, /author cannot approve/i);
+  for (const query of ["self approve", "approve PR", "author cannot approve"]) assert.match(guideTool.description, new RegExp(query, "i"));
   assert.match(admitTool.description, /never submits one/);
   const mcpGuide = callTool(root, "spipe_self_review_guide").content[0].text;
   assert.equal(mcpGuide, readFileSync(resolve(root, "doc/00_llm_process/spipe/review_admission.md"), "utf8"));
@@ -37,6 +44,9 @@ test("Claude, Codex, Gemini, Pipe, and plugin guidance is generated from one sou
   const canonical = source.slice(source.indexOf(begin), source.indexOf(end) + end.length);
   for (const path of [
     ".claude/skills/dev.md", ".codex/skills/dev/SKILL.md", ".gemini/commands/dev.toml",
-    "doc/00_llm_process/skill_command/skills/pipe/self-review/skill.md", "plugin/skills/spipe/SKILL.md"
+    ".claude/skills/release.md", ".codex/skills/release/SKILL.md", ".gemini/commands/release.toml",
+    "doc/00_llm_process/skill_command/skills/pipe/self-review/skill.md",
+    "doc/00_llm_process/skill_command/skills/pipe/release/repo_and_pull_req/skill.md",
+    "plugin/skills/spipe/SKILL.md", "plugin/skills/release/SKILL.md"
   ]) assert.ok(readFileSync(resolve(root, path), "utf8").includes(canonical), path);
 });

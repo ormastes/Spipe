@@ -56,7 +56,8 @@ Commands:
   review-admission-validate <json>
                        Validate receipt shape/time only; CLI never authorizes admission.
   review-capabilities  Print review request/admission schemas and capabilities.
-  self-review-guide    Explain GitHub author-approval limits and SPipe admission policy.
+  self-review-guide    Canonical help for "self approve", "approve PR", or
+                       "author cannot approve": exact-head review, protected dispatch, exact-head poll.
   self-review-request-plan <json>
                        Require explicit user-authorization receipt evidence and plan a scoped request.
                        GitHub forbids author APPROVED reviews; SPipe emits only its expiring check.

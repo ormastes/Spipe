@@ -52,6 +52,11 @@ operator; exposing broker command or integration-ID environment configuration
 to request callers invalidates this trust boundary. The CLI never consumes
 those environment values as admission authority.
 
+Use `spipe_self_review_guide` for agent searches such as `self approve`,
+`approve PR`, or `author cannot approve`. Its output names the required
+high/xhigh exact-head review, zero P0/P1 record, protected workflow inputs, and
+exact-head status poll.
+
 GitHub forbids a pull-request author from submitting an `APPROVED` review on
 their own PR. Scoped self-review instead emits a distinct required status check
 and also requires an operator-owned JSONL DB configured by the
