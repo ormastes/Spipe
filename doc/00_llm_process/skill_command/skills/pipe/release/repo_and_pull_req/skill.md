@@ -38,12 +38,16 @@ exact workflow:
 1. Resolve the live PR head and perform a `high`, `xhigh`, `max`, or `ultra`
    review of that exact head. Record the session, model, effort, verdict, and
    finding counts; continue only for `PASS` with `P0=0` and `P1=0`.
-2. Dispatch the protected host workflow once with the PR number, session ID,
-   reviewer model, reviewer effort, and `self_attestation=PASS:0:0`. In Simple:
-   `gh workflow run review-admission.yml --ref main -f pull_request_number="$PR_NUMBER" -f session_id="$SESSION_ID" -f reviewer_model="$REVIEWER_MODEL" -f reviewer_effort="$REVIEWER_EFFORT" -f self_attestation='PASS:0:0'`.
-3. Poll the check runs on the resolved head until `SPipe Self Review Admission`
-   succeeds or fails. Never treat a check on another SHA as evidence.
-4. If the provider rejects author `APPROVE`, or the actor and author are the
+2. Choose one protected implementation. Generic SPipe MCP callers invoke
+   `spipe_self_review_privilege_evaluate` and, only on allow, invoke
+   `spipe_self_review_approve` with the same closed request. A Simple-hosted
+   repository instead lets its trusted default-branch workflow perform that
+   policy resolution. Do not combine or reorder these two paths.
+3. For Simple, bind `HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)`, then dispatch once:
+   `gh workflow run review-admission.yml --repo ormastes/simple --ref main -f pull_request_number="$PR_NUMBER" -f session_id="$SESSION_ID" -f reviewer_model="$REVIEWER_MODEL" -f reviewer_effort="$REVIEWER_EFFORT" -f self_attestation='PASS:0:0'`.
+4. Poll only `repos/ormastes/simple/commits/$HEAD_SHA/check-runs?check_name=SPipe%20Self%20Review%20Admission`, and re-check that the PR still has
+   `HEAD_SHA`; never accept another SHA.
+5. If the provider rejects author `APPROVE`, or the actor and author are the
    same, print these steps instead of retrying. A rejection, policy denial,
    stale head, failed check, or missing protected workflow is a blocker.
 
@@ -60,7 +64,7 @@ bound-input change or expiry. A new push, base or merge-base movement, diff
 change, retarget, ruleset/policy/review/user-authorization receipt change, or
 expiry requires a fresh exact-head review, authorization, and evaluation.
 
-Call `spipe_self_review_privilege_evaluate` first. On deny, report its exact
+On the generic MCP path, call `spipe_self_review_privilege_evaluate` first. On deny, report its exact
 `reason_code`, matched policy/restriction IDs, affected paths, and
 `remediation`; never bypass or weaken the gate. On allow, call the
 compatibility-named `spipe_self_review_approve`, which emits only the SPipe

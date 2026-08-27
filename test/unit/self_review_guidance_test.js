@@ -23,8 +23,13 @@ test("CLI and MCP explain the provider limit and distinct admission action", () 
   assert.match(guide, /high.*xhigh.*max.*ultra/s);
   assert.match(guide, /PASS.*P0=0.*P1=0/s);
   for (const field of ["pull_request_number", "session_id", "reviewer_model", "reviewer_effort", "self_attestation='PASS:0:0'"]) assert.match(guide, new RegExp(field));
-  assert.match(guide, /Poll the exact resolved head/);
+  assert.match(guide, /Poll the exact resolved SHA/);
   assert.match(guide, /not GitHub provider\s+`APPROVED`/);
+  assert.match(guide, /spipe_self_review_privilege_evaluate.*only.*spipe_self_review_approve/s);
+  assert.match(guide, /--repo ormastes\/simple/);
+  assert.match(guide, /HEAD_SHA=\$\(gh pr view/);
+  assert.match(guide, /commits\/\$HEAD_SHA\/check-runs\?check_name=SPipe%20Self%20Review%20Admission/);
+  assert.match(guide, /Do not call, combine, or reorder/);
 
   assert.deepEqual(pluginTools, tools);
   const guideTool = tools.find((tool) => tool.name === "spipe_self_review_guide");

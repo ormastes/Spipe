@@ -53,10 +53,20 @@ author-approval rejection, print and follow these steps:
 1. Resolve the live PR head, then run a high-capability exact-head review at
    `high`, `xhigh`, `max`, or `ultra`. Record the session ID, model, effort,
    verdict, and P0/P1 counts. Stop unless the result is `PASS`, `P0=0`, `P1=0`.
-2. Dispatch the protected host workflow once. Simple's canonical dispatch is:
+2. Choose one protected implementation:
+
+   - Generic SPipe MCP: call `spipe_self_review_privilege_evaluate`; only an
+     allow may proceed to `spipe_self_review_approve` with the same closed
+     request.
+   - Simple hosted workflow: the trusted default-branch workflow performs its
+     internal policy evaluation and emission. Do not call, combine, or reorder
+     it with the generic MCP pair.
+
+3. For Simple, capture the exact head and dispatch once:
 
    ```sh
-   gh workflow run review-admission.yml --ref main \
+   HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)
+   gh workflow run review-admission.yml --repo ormastes/simple --ref main \
      -f pull_request_number="$PR_NUMBER" \
      -f session_id="$SESSION_ID" \
      -f reviewer_model="$REVIEWER_MODEL" \
@@ -64,10 +74,18 @@ author-approval rejection, print and follow these steps:
      -f self_attestation='PASS:0:0'
    ```
 
-3. Poll the exact resolved head for `SPipe Self Review Admission`; never accept
-   a successful check from another SHA. A push or other bound-state change
-   requires a fresh review and dispatch.
-4. Report the result as a required status check. It is not GitHub provider
+4. Poll the exact resolved SHA (repeat until the check reaches a terminal
+   conclusion), then confirm the PR head is still identical:
+
+   ```sh
+   gh api "repos/ormastes/simple/commits/$HEAD_SHA/check-runs?check_name=SPipe%20Self%20Review%20Admission" \
+     --jq ".check_runs[] | select(.head_sha == \"$HEAD_SHA\") | [.status,.conclusion] | @tsv"
+   test "$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)" = "$HEAD_SHA"
+   ```
+
+   Never accept a successful check from another SHA. A push or other
+   bound-state change requires a fresh review and dispatch.
+5. Report the result as a required status check. It is not GitHub provider
    `APPROVED` and is not independent review. A missing protected workflow,
    policy deny, scope restriction, failed check, or stale head blocks the path.
 
