@@ -128,6 +128,7 @@ cmp src/review/contract.js plugin/src/review/contract.js
 cmp src/review/admission.js plugin/src/review/admission.js
 cmp src/review/broker.js plugin/src/review/broker.js
 cmp doc/00_llm_process/spipe/review_admission.md plugin/doc/00_llm_process/spipe/review_admission.md
+cmp doc/00_llm_process/spipe/skill.md plugin/doc/00_llm_process/spipe/skill.md
 cmp doc/00_llm_process/skill_command/command/release.md plugin/doc/00_llm_process/skill_command/command/release.md
 printf '%s\n' '{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_promotion_plan"
 printf '%s\n' '{"jsonrpc":"2.0","id":51,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_withdrawal_plan"

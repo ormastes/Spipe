@@ -74,8 +74,8 @@ context "with setup":
         setup()
     after_each:
         cleanup()
-    it "test":
-        expect(true).to_equal(true)
+    it "preserves prepared state":
+        expect(current_state()).to_equal("ready")
 ```
 
 ## Test Types

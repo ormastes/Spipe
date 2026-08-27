@@ -34,9 +34,11 @@ The guarded operational commands each accept exactly one JSON object:
 cherry-pick, build, tag, push, delete, overwrite, or publish.
 
 Review requests cover repo/PR/session/feature scopes and reject caller-supplied
-head SHAs. Admission validation is unavailable unless a dedicated review broker
-command and pinned integration ID are configured server-side; the broker
-re-resolves the live head and exact check set before PASS is accepted.
+head SHAs. CLI admission validation is explicitly non-authoritative: it checks
+the closed receipt shape and lifetime but always returns `admitted: false` and
+ignores caller-controlled broker environment values. Authoritative validation
+belongs only to an operator-owned MCP server whose dedicated broker re-resolves
+the live head and exact check set before PASS is accepted.
 
 Fine-tune process examples:
 

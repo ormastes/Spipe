@@ -16,4 +16,6 @@ not confer protected repository or publication authority.
 
 The plugin also projects non-mutating repo/PR/session/feature review requests
 and broker-verified `spipe-review-admission/1` validation. It cannot emit a
-PASS status without separately configured dedicated broker authority.
+PASS status without separately configured dedicated broker authority in an
+operator-owned MCP process. CLI receipt checks are shape/time planning only and
+always remain non-authoritative.

@@ -70,8 +70,8 @@ function validateIndependent(input) {
   exactFields(input.verifier, ["kind", "identity", "provider", "model", "tier", "effort", "verdict"], "verifier");
   if (input.verifier.kind !== "high_capability_model") throw new Error("verifier.kind must be high_capability_model");
   for (const key of ["identity", "provider", "model", "tier", "effort"]) nonempty(input.verifier[key], `verifier.${key}`);
-  if (!['pass', 'fail'].includes(input.verifier.verdict)) throw new Error("verifier.verdict must be pass or fail");
-  if (input.verifier.verdict === "pass" && input.findings.some((finding) => finding.severity === "p0" || finding.severity === "p1")) throw new Error("pass verdict cannot contain open p0 or p1 findings");
+  if (input.verifier.verdict !== "pass") throw new Error("verifier.verdict must be pass for admission");
+  if (input.findings.some((finding) => finding.severity === "p0" || finding.severity === "p1")) throw new Error("independent admission cannot contain open p0 or p1 findings");
   if (!SHA256.test(input.review_receipt_sha256)) throw new Error("review_receipt_sha256 has invalid format");
 }
 
@@ -80,9 +80,24 @@ function validateFallback(input) {
   exactFields(input.attestor, ["type", "id"], "attestor");
   if (input.attestor.type !== "User" || input.attestor.id !== 2378857) throw new Error("fallback attestor must be the pinned repository owner");
   if (!SHA256.test(input.unavailable_verifier_receipt_sha256)) throw new Error("unavailable_verifier_receipt_sha256 has invalid format");
+  if (input.findings.length !== 0) throw new Error("owner-attested fallback cannot contain review findings");
 }
 
-export function validateReviewAdmission(input, authority, now = new Date()) {
+function modeBrokerFields(mode) {
+  return mode === "independent_verifier"
+    ? ["verifier", "review_receipt_sha256"]
+    : ["reason", "attestor", "unavailable_verifier_receipt_sha256"];
+}
+
+function sameJsonValue(left, right) {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => sameJsonValue(value, right[index]));
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  const leftKeys = Object.keys(left).sort(); const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index] && sameJsonValue(left[key], right[key]));
+}
+
+function validateAdmissionReceipt(input, now) {
   if (!input || input.schema !== reviewSchemas.admission) throw new Error(`schema must equal ${reviewSchemas.admission}`);
   if (!modes.has(input.mode)) throw new Error("mode must be independent_verifier or owner_attested_fallback");
   exactFields(input, input.mode === "independent_verifier" ? independentAdmissionFields : fallbackAdmissionFields, "review admission");
@@ -98,19 +113,38 @@ export function validateReviewAdmission(input, authority, now = new Date()) {
   if (issued > current) throw new Error("review admission is not yet valid");
   if (current >= expires) throw new Error("review admission has expired");
   if (expires <= issued || expires - issued > MAX_TTL_MS) throw new Error("review admission TTL must be positive and at most 86400 seconds");
+  return scope;
+}
+
+export function planReviewAdmissionValidation(input, now = new Date()) {
+  const scope = validateAdmissionReceipt(input, now);
+  return Object.freeze({
+    schema: reviewSchemas.admission, admitted: false, authoritative: false,
+    broker_verified: false, mutation: "none", mode: input.mode, scope,
+    request_id: input.request_id,
+    next_action: "submit this receipt to an operator-owned MCP review broker; CLI environment values never authorize admission"
+  });
+}
+
+export function validateReviewAdmission(input, authority, now = new Date()) {
+  const scope = validateAdmissionReceipt(input, now);
   if (!authority || typeof authority.resolveAndVerify !== "function" || typeof authority.integrationId !== "string" || authority.integrationId === "") throw new Error("review broker authority is not configured");
   if (input.issuer_integration_id !== authority.integrationId) throw new Error("issuer integration does not match the configured review broker");
 
   const verified = authority.resolveAndVerify(input);
   if (!verified || verified.valid !== true) throw new Error("review broker rejected the admission receipt");
-  exactFields(verified, ["valid", "integration_id", "repository", "pull_request_number", "session_id", "feature_id", "head_sha", "required_checks", "audit_receipt_sha256"], "review broker result");
-  for (const key of ["integration_id", "repository", "pull_request_number", "session_id", "feature_id", "head_sha", "audit_receipt_sha256"]) {
+  exactFields(verified, ["valid", "integration_id", "mode", "repository", "pull_request_number", "session_id", "feature_id", "head_sha", "required_checks", "findings", "request_actor", "request_id", "issued_at", "expires_at", "audit_receipt_sha256", ...modeBrokerFields(input.mode)], "review broker result");
+  for (const key of ["integration_id", "mode", "repository", "pull_request_number", "session_id", "feature_id", "head_sha", "findings", "request_actor", "request_id", "issued_at", "expires_at", "audit_receipt_sha256", ...modeBrokerFields(input.mode)]) {
     const receiptKey = key === "integration_id" ? "issuer_integration_id" : key;
-    if (verified[key] !== input[receiptKey]) throw new Error(`review broker ${key} does not match the admission receipt`);
+    if (!sameJsonValue(verified[key], input[receiptKey])) throw new Error(`review broker ${key} does not match the admission receipt`);
   }
   validateChecks(verified.required_checks);
   if (checksDigest(verified.required_checks) !== checksDigest(input.required_checks)) throw new Error("review broker required checks do not match the admission receipt");
-  return Object.freeze({ schema: reviewSchemas.admission, admitted: true, mutation: "none", scope, head_sha: input.head_sha, request_id: input.request_id, audit_receipt_sha256: input.audit_receipt_sha256, status_context: "SPipe Review Admission", status_emission: "broker_only" });
+  const modeEvidence = input.mode === "independent_verifier"
+    ? { verifier: Object.freeze({ ...input.verifier }), review_receipt_sha256: input.review_receipt_sha256 }
+    : { reason: input.reason, attestor: Object.freeze({ ...input.attestor }), unavailable_verifier_receipt_sha256: input.unavailable_verifier_receipt_sha256 };
+  const findings = Object.freeze(input.findings.map((finding) => Object.freeze({ ...finding })));
+  return Object.freeze({ schema: reviewSchemas.admission, admitted: true, mutation: "none", mode: input.mode, scope, head_sha: input.head_sha, required_checks: Object.freeze([...input.required_checks]), findings, request_actor: input.request_actor, request_id: input.request_id, issued_at: input.issued_at, expires_at: input.expires_at, audit_receipt_sha256: input.audit_receipt_sha256, ...modeEvidence, status_context: "SPipe Review Admission", status_emission: "broker_only" });
 }
 
 export { reviewAdmissionCommonFields };

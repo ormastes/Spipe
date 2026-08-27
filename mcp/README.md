@@ -39,6 +39,10 @@ Review request creation is also non-mutating and never accepts caller head
 authority. Review admission requires a configured dedicated broker, pinned
 integration identity, live provider head/check resolution, and an unexpired
 audit receipt. Without that authority the admission tool fails closed.
+The MCP process and its broker environment must be launched and owned by the
+operator; exposing broker command or integration-ID environment configuration
+to request callers invalidates this trust boundary. The CLI never consumes
+those environment values as admission authority.
 
 Resource:
 

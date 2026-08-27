@@ -42,7 +42,7 @@ Commands:
   review-request-create <json>
                        Create a closed non-mutating repo/PR/session/feature review request.
   review-admission-validate <json>
-                       Validate a broker-issued exact-head review admission receipt.
+                       Validate receipt shape/time only; CLI never authorizes admission.
   review-capabilities  Print review request/admission schemas and capabilities.
   fine-tune-guide      Print the LLM fine-tune process guide.
   fine-tune-model-guide

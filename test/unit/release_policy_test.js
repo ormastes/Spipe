@@ -99,6 +99,15 @@ test("root and plugin MCP protocol surfaces stay behaviorally mirrored", () => {
   ]) assert.deepEqual(pluginRouter(message), rootRouter(message));
 });
 
+test("served SPipe skill resources contain no trivial placeholder assertion", () => {
+  const forbidden = "expect(" + "true).to_equal(true)";
+  const rootSkill = readResource(root, "spipe://skill").contents[0].text;
+  const pluginSkill = readPluginResource(join(root, "plugin"), "spipe://skill").contents[0].text;
+  assert.equal(rootSkill.includes(forbidden), false);
+  assert.equal(pluginSkill.includes(forbidden), false);
+  assert.equal(pluginSkill, rootSkill);
+});
+
 test("MCP exposes read-only release policy surfaces", () => {
   assert.ok(tools.some((tool) => tool.name === "spipe_release_guide"));
   assert.ok(tools.some((tool) => tool.name === "spipe_release_capabilities"));
