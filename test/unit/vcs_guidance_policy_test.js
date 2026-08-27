@@ -122,6 +122,29 @@ test("VCS build and ship agents preserve protected boundaries", () => {
   assert.match(ship, /output is a submitted work branch/i);
 });
 
+test("build agent preserves an ordinary non-release build test and debug path", () => {
+  const build = read(".claude/agents/build.md");
+  const flat = build.replace(/\s+/g, " ");
+  for (const command of [
+    "bin/simple build",
+    "bin/simple build --release",
+    "bin/simple build --bootstrap",
+    "bin/simple test",
+    "bin/simple test path/to/spec.spl",
+    "bin/simple test --list",
+    "bin/simple build lint",
+    "bin/simple build fmt",
+    "bin/simple build check",
+    "bin/simple build clean",
+    "bin/simple build watch"
+  ]) assert.match(build, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `missing ordinary command: ${command}`);
+
+  assert.match(flat, /Ordinary build, test, and debug path/i);
+  assert.match(flat, /ordinary build is not a release candidate/i);
+  assert.match(flat, /does not by itself request a software release or immutable release candidate/i);
+  assert.match(flat, /Enter this path only when.*explicitly requests candidate construction/i);
+});
+
 test("shipped guidance contains no forbidden legacy VCS recipe", () => {
   for (const path of guardedGuidancePaths) {
     const content = read(path);
