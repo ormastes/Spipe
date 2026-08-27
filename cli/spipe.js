@@ -6,7 +6,7 @@ import { releaseCapabilities, releaseContractHash, releaseSchemas } from "../src
 import { runReleaseCommand } from "../src/cli/release_commands.js";
 import { runReviewCommand } from "../src/cli/review_commands.js";
 import { reviewCapabilities, reviewSchemas } from "../src/review/contract.js";
-import { selfReviewSchemas } from "../src/review/self_review.js";
+import { selfReviewProviderGuidance, selfReviewSchemas } from "../src/review/self_review.js";
 import { canonicalVersion, checkVersionAuthority } from "../src/release/version.js";
 
 const moduleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,8 +45,10 @@ Commands:
   review-admission-validate <json>
                        Validate receipt shape/time only; CLI never authorizes admission.
   review-capabilities  Print review request/admission schemas and capabilities.
+  self-review-guide    Explain GitHub author-approval limits and SPipe admission policy.
   self-review-request-plan <json>
-                       Plan a scoped self-review request; never trusts a caller head or approves a PR.
+                       Require explicit user-authorization receipt evidence and plan a scoped request.
+                       GitHub forbids author APPROVED reviews; SPipe emits only its expiring check.
   fine-tune-guide      Print the LLM fine-tune process guide.
   fine-tune-model-guide
                        Print the LLM base-model research guide.
@@ -1543,6 +1545,9 @@ switch (command) {
   case "release-guide":
     console.log(readFileSync(join(moduleRoot, "doc/00_llm_process/skill_command/command/release.md"), "utf8"));
     break;
+  case "self-review-guide":
+    console.log(readFileSync(join(moduleRoot, "doc/00_llm_process/spipe/review_admission.md"), "utf8"));
+    break;
   case "release-capabilities":
     for (const [name, value] of Object.entries(releaseSchemas)) console.log(`schema.${name}=${value}`);
     for (const [name, value] of Object.entries(releaseCapabilities)) console.log(`capability.${name}=${value}`);
@@ -1552,6 +1557,7 @@ switch (command) {
     for (const [name, value] of Object.entries(reviewSchemas)) console.log(`schema.${name}=${value}`);
     for (const [name, value] of Object.entries(selfReviewSchemas)) console.log(`schema.self_review_${name}=${value}`);
     for (const [name, value] of Object.entries(reviewCapabilities)) console.log(`capability.${name}=${value}`);
+    for (const [name, value] of Object.entries(selfReviewProviderGuidance)) console.log(`self_review.${name}=${value}`);
     break;
   case "release-session-plan":
   case "release-beta-backport-plan":

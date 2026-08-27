@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "SPipe",
     "shortDescription": "Guarded software-release planning and process tools",
-    "longDescription": "Plan isolated release sessions and exact promotion, and create broker-bound review requests without granting repository mutation authority.",
+    "longDescription": "Plan isolated releases and broker-bound reviews. For GitHub authors, explain and emit the distinct scoped SPipe Self Review Admission check without claiming an APPROVED review.",
     "developerName": "Simple Project",
     "category": "Developer Tools",
     "capabilities": ["Read", "Planning"],
@@ -24,7 +24,8 @@
       "Plan an isolated beta release.",
       "Check reviewed fixes for beta backporting.",
       "Validate an immutable candidate promotion.",
-      "Create a server-side review request for a repository, pull request, session, or feature."
+      "Create a server-side review request for a repository, pull request, session, or feature.",
+      "Explain why I cannot approve my own GitHub pull request and evaluate SPipe self-review admission."
     ]
   }
 }

@@ -8,7 +8,12 @@ export const reviewCapabilities = Object.freeze({
   external_review_mutation: false,
   default_allow_scoped_self_review: true,
   broker_only_self_review_admission_check: true,
-  operator_owned_text_policy_db: true
+  operator_owned_text_policy_db: true,
+  provider_author_approval: false,
+  user_authorized_self_review_only: true,
+  explicit_user_authorization_evidence: true,
+  broker_registered_status_invalidation: true,
+  structured_self_review_rejection_guidance: true
 });
 
 export const reviewRequestFields = Object.freeze([
