@@ -60,7 +60,10 @@ The external policy database must be the closed
 `spipe-self-review-policy-db/2` JSONL contract. Both incompatible v1 shapes and
 caller `self_attested` evidence fail closed; missing authority, TTL, nested
 identity, canonical UTC validity, or higher-model receipt facts are never
-inferred.
+inferred. The broker must also load separate `spipe-self-review-policy-trust/1`
+with the pinned authority, Ed25519 public key, and exact whole-database digest;
+self-declared keys, invalid signatures, duplicate JSON keys, invalid UTF-8,
+record replacement, or tail truncation reject the database.
 
 Constrain scopes are `code`, `text`, exact `file`, immediate
 `directory_files`, and recursive `directory_recursive`. Admission binds its

@@ -171,7 +171,10 @@ export function callTool(moduleRoot, name, args = {}, options = {}) {
   if (name === "spipe_review_admission_validate") return text(JSON.stringify(validateReviewAdmission(args, options.reviewAuthority || configuredReviewAuthority()), null, 2));
   if (name === "spipe_self_review_privilege_evaluate" || name === "spipe_self_review_approve") {
     const authority = options.reviewAuthority || configuredReviewAuthority();
-    const policy = options.selfReviewPolicy || loadSelfReviewPolicy(options.selfReviewPolicyPath || process.env.SPIPE_SELF_REVIEW_POLICY_DB);
+    const policy = options.selfReviewPolicy || loadSelfReviewPolicy(
+      options.selfReviewPolicyPath || process.env.SPIPE_SELF_REVIEW_POLICY_DB,
+      options.selfReviewPolicyTrustPath || process.env.SPIPE_SELF_REVIEW_POLICY_TRUST
+    );
     const result = name === "spipe_self_review_privilege_evaluate"
       ? evaluateSelfReviewPrivilege(args, policy, authority)
       : approveSelfReview(args, policy, authority);
