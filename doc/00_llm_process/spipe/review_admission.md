@@ -44,6 +44,59 @@ review is therefore not an available action. See
 Do not retry `gh pr review --approve`, report a fabricated approval, or treat a
 comment as an approval.
 
+### Fast path: `spipe self-review-guide`
+
+This is the canonical discovery command for searches such as `self approve`,
+`approve PR`, and `author cannot approve`. On same-author detection or a GitHub
+author-approval rejection, print and follow these steps:
+
+1. Before review, capture the live PR head as `HEAD_SHA`, then run a
+   high-capability exact-head review of that captured SHA at `high`, `xhigh`,
+   `max`, or `ultra`. Record the session ID, model, effort,
+   verdict, and P0/P1 counts. Stop unless the result is `PASS`, `P0=0`, `P1=0`.
+2. Choose one protected implementation:
+
+   - Generic SPipe MCP: call `spipe_self_review_privilege_evaluate`; only an
+     allow may proceed to `spipe_self_review_approve` with the same closed
+     request.
+   - Simple hosted workflow: the trusted default-branch workflow performs its
+     internal policy evaluation and emission. Do not call, combine, or reorder
+     it with the generic MCP pair.
+
+3. For Simple, capture the exact head before starting the review. Only after
+   that captured SHA passes, dispatch it as the expected reviewed head:
+
+   ```sh
+   HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)
+   gh workflow run review-admission.yml --repo ormastes/simple --ref main \
+     -f pull_request_number="$PR_NUMBER" \
+     -f expected_head_sha="$HEAD_SHA" \
+     -f session_id="$SESSION_ID" \
+     -f reviewer_model="$REVIEWER_MODEL" \
+     -f reviewer_effort="$REVIEWER_EFFORT" \
+     -f self_attestation='PASS:0:0'
+   ```
+
+   The trusted default-branch workflow independently resolves the live PR head
+   and must reject unless it equals `expected_head_sha`. This input binds the
+   review evidence; it does not give the caller authority to choose the emitted
+   check head.
+
+4. Poll the exact resolved SHA (repeat until the check reaches a terminal
+   conclusion), then confirm the PR head is still identical:
+
+   ```sh
+   gh api "repos/ormastes/simple/commits/$HEAD_SHA/check-runs?check_name=SPipe%20Self%20Review%20Admission" \
+     --jq ".check_runs[] | select(.head_sha == \"$HEAD_SHA\") | [.status,.conclusion] | @tsv"
+   test "$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)" = "$HEAD_SHA"
+   ```
+
+   Never accept a successful check from another SHA. A push or other
+   bound-state change requires a fresh review and dispatch.
+5. Report the result as a required status check. It is not GitHub provider
+   `APPROVED` and is not independent review. A missing protected workflow,
+   policy deny, scope restriction, failed check, or stale head blocks the path.
+
 SPipe never masquerades as an independent review and never submits a provider
 pull-request approval. Instead, an operator-owned MCP server asks its pinned
 broker to emit the distinct required `SPipe Self Review Admission` check on one

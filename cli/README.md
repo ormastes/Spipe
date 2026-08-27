@@ -55,6 +55,9 @@ is never an admission decision and cannot emit `SPipe Self Review Admission`.
 that ordinary code/text is only default-eligible after current explicit
 authorization evidence, and how operator scopes, broker-registered status
 invalidation, exact rejection reasons, and remediation work.
+It is the canonical discovery command for `self approve`, `approve PR`, and
+`author cannot approve`, and prints the exact-head review, protected dispatch,
+and exact-head check polling steps.
 
 Fine-tune process examples:
 

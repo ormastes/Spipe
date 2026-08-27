@@ -93,6 +93,9 @@ secret/ruleset/signing/review-authority restrictions. The broker binds the exact
 head, base, diff, ruleset, policy, receipts, and expiry, and registers fail-closed
 status invalidation; changed or expired input requires fresh authorization,
 review, and evaluation. Denials return an exact reason code and remediation.
+Run `spipe self-review-guide` whenever an agent searches for `self approve`,
+`approve PR`, or `author cannot approve`; it prints the exact review, protected
+dispatch, and exact-head polling workflow.
 
 The CLI also owns the reusable LLM fine-tune process. It can initialize host
 attempt registries, record data downloads, model research, base-model choice,
