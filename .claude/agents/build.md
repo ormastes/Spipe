@@ -1,68 +1,44 @@
-# Build Agent - Building and Releasing
+# Build Agent - Candidate Construction
 
-**Use when:** Building the project, creating releases, managing packages.
-**Skills:** `/release`
+**Use when:** building, testing, packaging, or constructing an immutable release
+candidate.
+**Skills:** `/release`, `/software-release`
 
-## Quick Build Commands
+Read `doc/00_llm_process/skill_command/vcs_session_policy.md` and the sibling
+release skill before work. Build only from a recorded session-owned `work/*`
+branch in a non-main linked worktree.
 
-```bash
-bin/simple build                    # Debug build
-bin/simple build --release          # Release build
-bin/simple build --bootstrap        # Bootstrap build (minimal)
+## Build flow
 
-bin/simple test                     # Run all tests
-bin/simple build lint               # Run linter
-bin/simple build fmt                # Format code
-bin/simple build check              # All quality checks
+1. Verify session ownership, worktree identity, target ref, base commit, and
+   expected target commit.
+2. Run the project's canonical focused and whole verification gates against the
+   exact source head. Record toolchain, policy, support, source-tree, and build
+   graph identities.
+3. Build the exact candidate once in isolated output/cache paths. Fail closed on
+   missing required rows, fallback artifacts, stale evidence, or identity drift.
+4. Package artifacts and write immutable manifests and digests. Qualification
+   consumes those exact artifacts; it does not rebuild them.
+5. Hand the candidate and receipts to release admission. Do not integrate the
+   branch, publish assets, or create a tag from the build phase.
 
-bin/simple build clean              # Clean artifacts
-bin/simple build bootstrap          # 3-stage bootstrap pipeline
-bin/simple build watch              # Watch mode (auto-rebuild)
-```
+## Stable and prerelease candidates
 
-## Running Tests
+Stable, RC, beta, and alpha are policy channels, not permission to weaken
+identity or admission. Beta maintenance may include only caller-selected,
+reviewed bug-fix commits with exact provenance and renewed result-revision
+evidence. Discovery never selects or applies a fix automatically.
 
-```bash
-bin/simple test                          # All tests
-bin/simple test path/to/spec.spl         # Single file
-bin/simple test --list                   # List tests
-bin/simple test --only-slow              # Slow tests only
-```
+## Tag boundary
 
-## Release Process
+Build and ordinary ship phases never create or push release tags. Only the
+protected promotion authority may push exactly one signed annotated tag after
+the immutable candidate, qualification, admission, and target compare-and-swap
+all pass. Promotion reuses admitted artifacts without rebuilding.
 
-1. Update version in `simple.sdn`
-2. Update `CHANGELOG.md`
-3. Commit: `jj commit -m "chore: Release vX.Y.Z"`
-4. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"` (use git for tags)
-5. Push: `jj bookmark set main -r @- && jj git push --bookmark main && git push origin vX.Y.Z`
-6. Monitor GitHub Actions
-7. Verify: `gh release view vX.Y.Z`
+## Exit receipt
 
-## Version Types
-
-| Type | Format | Stability |
-|------|--------|-----------|
-| Stable | `v1.2.3` | Production |
-| RC | `v1.2.3-rc.1` | Pre-release |
-| Beta | `v1.2.3-beta.1` | Feature testing |
-| Alpha | `v1.2.3-alpha.1` | Early testing |
-
-## Pre-Release Checklist
-
-- [ ] All tests passing: `bin/simple test`
-- [ ] No lint warnings: `bin/simple build lint`
-- [ ] Version updated in `simple.sdn`
-- [ ] CHANGELOG.md updated
-- [ ] Local build verified
-
-## Binary Architecture
-
-| Binary | Location | Purpose |
-|--------|----------|---------|
-| `simple` | `bin/simple` | CLI entry point |
-| `simple` | `bin/release/simple` | Release runtime (33MB) |
-
-## See Also
-
-- `/release` - Full release guide with rollback procedures
+Record the session branch/head, target ref/commit, candidate identity, source
+and artifact digests, verification and qualification receipts, and every
+blocked or unavailable required row. A build is not a release and does not
+move a protected ref.
