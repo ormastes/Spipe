@@ -26,10 +26,7 @@ exact workflow:
    `spipe_self_review_approve` with the same closed request. A Simple-hosted
    repository instead lets its trusted default-branch workflow perform that
    policy resolution. Do not combine or reorder these two paths.
-3. For Simple, capture before the review with `HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)`. After that exact SHA passes review, dispatch once:
-   `gh workflow run review-admission.yml --repo ormastes/simple --ref main -f pull_request_number="$PR_NUMBER" -f expected_head_sha="$HEAD_SHA" -f session_id="$SESSION_ID" -f reviewer_model="$REVIEWER_MODEL" -f reviewer_effort="$REVIEWER_EFFORT" -f self_attestation='PASS:0:0'`.
-   The trusted workflow independently resolves the live head and rejects a
-   mismatch; `expected_head_sha` binds evidence and is not caller authority.
+3. For Simple, capture before the review with `HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)`. Dispatch only through a configured broker that authenticates a canonical v2 policy DB and an exact higher-model receipt. If the workflow offers only a `self_attestation` input, stop: that legacy path cannot supply broker-signed evidence and must not emit admission.
 4. Poll only `repos/ormastes/simple/commits/$HEAD_SHA/check-runs?check_name=SPipe%20Self%20Review%20Admission`, and re-check that the PR still has
    `HEAD_SHA`; never accept another SHA.
 5. If the provider rejects author `APPROVE`, or the actor and author are the
@@ -41,6 +38,14 @@ current user-authorization actor, timestamp, and receipt digest, and the broker
 must authenticate and repeat that evidence. Ordinary reviewed code/text is
 default-eligible only after that proof; operator `deny`/`constrain` records and
 fixed secret/ruleset/signing/review-authority restrictions always win.
+The external policy database must be the closed
+`spipe-self-review-policy-db/2` JSONL contract. Both incompatible v1 shapes and
+caller `self_attested` evidence fail closed; missing authority, TTL, nested
+identity, canonical UTC validity, or higher-model receipt facts are never
+inferred. The broker must also load separate `spipe-self-review-policy-trust/1`
+with the pinned authority, Ed25519 public key, and exact whole-database digest;
+self-declared keys, invalid signatures, duplicate JSON keys, invalid UTF-8/BOM,
+record replacement, or tail truncation reject the database.
 
 Constrain scopes are `code`, `text`, exact `file`, immediate
 `directory_files`, and recursive `directory_recursive`. Admission binds its

@@ -1,17 +1,29 @@
 import assert from "node:assert/strict";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
   approveSelfReview, changedPathsManifestDigest, diffIdentityDigest, evaluateSelfReviewPrivilege,
-  parseSelfReviewPolicy, planSelfReviewRequest, selfReviewSchemas
+  loadSelfReviewPolicy, parseSelfReviewPolicy, planSelfReviewRequest,
+  selfReviewPolicySignaturePayload, selfReviewPolicyTrustSchema, selfReviewSchemas
 } from "../../src/review/self_review.js";
 import { tools } from "../../mcp/protocol/tools.js";
 import { tools as pluginTools } from "../../plugin/mcp/protocol/tools.js";
 
 const head = "a".repeat(40); const baseHead = "9".repeat(40); const mergeBase = "8".repeat(40); const blob = "b".repeat(40); const receipt = "c".repeat(64); const authorizationReceipt = "e".repeat(64);
 const now = new Date("2026-08-27T12:00:00.000Z");
+const signingKeys = generateKeyPairSync("ed25519");
+const publicKeyPem = signingKeys.publicKey.export({ type: "spki", format: "pem" });
 function request(overrides = {}) { return { schema: selfReviewSchemas.request, repo_id: "42", pull_request: 7, session_id: "session-7", reviewer_id: "codex:session-7", reviewer_provider: "openai", reviewer_model: "gpt-5.6-sol", higher_model_receipt_digest: receipt, user_authorization_actor: "github:user:2378857", user_authorization_receipt_digest: authorizationReceipt, user_authorized_at: "2026-08-27T10:30:00.000Z", request_id: "self-review-7", ...overrides }; }
-function policy(...records) { return parseSelfReviewPolicy([JSON.stringify({ schema: selfReviewSchemas.policy_db, record_type: "header", default_allow: true }), ...records.map(JSON.stringify)].join("\n")); }
+const policyAuthority = { type: "operator_owned_external", id: "github:user:2378857", key_id: "operator-key-1" };
+function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
+function policyTrust(content, overrides = {}) { return { schema: selfReviewPolicyTrustSchema, authority: policyAuthority, signature_algorithm: "ed25519", public_key_pem: publicKeyPem, expected_policy_db_sha256: sha256(content), ...overrides }; }
+function signedRecord(record, privateKey = signingKeys.privateKey) { const unsigned = { ...record, signature: "" }; return { ...record, signature: sign(null, Buffer.from(selfReviewPolicySignaturePayload(unsigned)), privateKey).toString("base64") }; }
+function policyFixture(...records) { const lines = [JSON.stringify({ schema: selfReviewSchemas.policy_db, record_type: "header", default_allow: true, max_ttl_seconds: 86400, authority: policyAuthority })]; for (let index = 0; index < records.length; index += 1) { const chained = { ...records[index], previous_record_sha256: index === 0 ? "0".repeat(64) : sha256(lines.at(-1)) }; lines.push(JSON.stringify(signedRecord(chained))); } const content = lines.join("\n"); const trust = policyTrust(content); return { content, trust, parsed: parseSelfReviewPolicy(content, trust) }; }
+function policy(...records) { return policyFixture(...records).parsed; }
 function change(path, overrides = {}) { return { status: "modified", old_path: path, new_path: path, old_blob_sha: blob, new_blob_sha: "d".repeat(40), old_mode: "100644", new_mode: "100644", semantic_flags: [], ...overrides }; }
 function manifest(changes) { return { schema: selfReviewSchemas.path_manifest, repository: { provider: "github", id: 42, node_id: "R_42", name: "ormastes/Simple" }, pull_request_number: 7, head_sha: head, base_repository: { provider: "github", id: 42, node_id: "R_42", name: "ormastes/Simple" }, base_ref: "refs/heads/main", base_sha: baseHead, merge_base_sha: mergeBase, changes }; }
 function authority(changes, overrides = {}) {
@@ -23,7 +35,7 @@ function authority(changes, overrides = {}) {
     admitSelfReview: (command) => { const result = { admitted: true, integration_id: "github-app:31415", repo_id: command.repo_id, pull_request: command.pull_request, session_id: command.session_id, request_id: command.request_id, head_sha: command.head_sha, base_repo_id: command.base_repo_id, base_ref: command.base_ref, base_sha: command.base_sha, merge_base_sha: command.merge_base_sha, diff_sha256: command.diff_sha256, target_repo_id: command.target_repo_id, target_ref: command.target_ref, target_ruleset_id: command.target_ruleset_id, strict_up_to_date: command.strict_up_to_date, protected_target: command.protected_target, changed_paths_manifest_sha256: command.changed_paths_manifest_sha256, user_authorization_actor: command.user_authorization_actor, user_authorization_receipt_digest: command.user_authorization_receipt_digest, user_authorized_at: command.user_authorized_at, policy_audit_digest: command.policy_audit_digest, status_context: "SPipe Self Review Admission", check_run_id: "check:99", admitted_at: "2026-08-27T12:00:00.000Z", expires_at: command.expires_at, invalidation_registered: true, invalidation_at: command.expires_at, invalidation_mode: command.invalidation_mode, ...overrides.admission }; if (overrides.omit_admission_field) delete result[overrides.omit_admission_field]; return result; }
   };
 }
-function subject(overrides = {}) { return { schema: selfReviewSchemas.subject_policy, record_type: "subject_policy", policy_id: "policy-1", effect: "deny", repository_id: "42", session_id: "session-7", reviewer_id: "codex:session-7", allow_scopes: [], deny_scopes: [], issued_by: { type: "User", id: 2378857 }, issued_at: "2026-08-27T10:00:00.000Z", not_before: "2026-08-27T10:00:00.000Z", expires_at: "2026-08-27T14:00:00.000Z", issuer_key_id: "owner:key-1", previous_record_sha256: "", signature: "test-signature", ...overrides }; }
+function subject(changes, overrides = {}) { const exact = manifest(changes); return { schema: selfReviewSchemas.subject_policy, record_type: "subject_policy", policy_id: "policy-1", effect: "deny", subject: { repository: exact.repository, pull_request_number: exact.pull_request_number, head_sha: exact.head_sha, session_id: "session-7", reviewer: { provider: "openai", id: "codex:session-7", model: "gpt-5.6-sol" } }, changed_paths_manifest_sha256: changedPathsManifestDigest(exact), higher_model_receipt_digest: receipt, allow_scopes: [], deny_scopes: [], issued_by: policyAuthority, issued_at: "2026-08-27T10:00:00.000Z", not_before: "2026-08-27T10:00:00.000Z", expires_at: "2026-08-27T14:00:00.000Z", previous_record_sha256: "0".repeat(64), signature: "", ...overrides }; }
 
 test("headless request plan cannot accept caller head or diff", () => {
   const planned = planSelfReviewRequest(request(), now);
@@ -53,6 +65,52 @@ test("MCP and plugin expose identical headless evaluate/admit request schemas", 
   }
 });
 
+test("canonical policy DB v2 rejects both incompatible v1 shapes and authority ambiguity", () => {
+  const simpleV1 = `${JSON.stringify({ schema: "spipe-self-review-policy-db/1", default_allow: true, max_ttl_seconds: 86400, authority: "operator_owned_external" })}\n`;
+  const spipeV1 = `${JSON.stringify({ schema: "spipe-self-review-policy-db/1", record_type: "header", default_allow: true })}\n`;
+  assert.throws(() => parseSelfReviewPolicy(simpleV1, policyTrust(simpleV1)), /missing fields: record_type/);
+  assert.throws(() => parseSelfReviewPolicy(spipeV1, policyTrust(spipeV1)), /missing fields: max_ttl_seconds, authority/);
+  const header = { schema: selfReviewSchemas.policy_db, record_type: "header", default_allow: true, max_ttl_seconds: 86400, authority: policyAuthority };
+  const payload = JSON.stringify(header); const parsed = parseSelfReviewPolicy(payload, policyTrust(payload));
+  assert.equal(parsed.policy_db_sha256, createHash("sha256").update(payload).digest("hex"));
+  const overlong = JSON.stringify({ ...header, max_ttl_seconds: 86401 }); assert.throws(() => parseSelfReviewPolicy(overlong, policyTrust(overlong)), /within 24 hours/);
+  const selfAttested = JSON.stringify({ ...header, authority: { ...policyAuthority, type: "self_attested" } }); assert.throws(() => parseSelfReviewPolicy(selfAttested, policyTrust(selfAttested)), /operator_owned_external/);
+  const padded = ` ${payload}`; assert.throws(() => parseSelfReviewPolicy(padded, policyTrust(padded)), /canonical non-empty JSONL/);
+  const changes = [change("src/main.spl")];
+  assert.throws(() => policy(subject(changes, { issued_at: "1787846400" })), /canonical RFC3339 UTC/);
+  assert.throws(() => policy(subject(changes, { expires_at: "2026-08-28T10:00:01.000Z" })), /max_ttl_seconds/);
+  assert.throws(() => policy(subject(changes, { issued_by: { ...policyAuthority, id: "github:user:other" } })), /does not match the policy DB authority/);
+  assert.throws(() => policy(subject(changes, { higher_model_receipt_digest: "self_attested" })), /higher_model_receipt_digest/);
+  const oldFlat = subject(changes); delete oldFlat.subject; Object.assign(oldFlat, { repository_id: "42", session_id: "session-7", reviewer_id: "codex:session-7", issuer_key_id: "operator-key-1" });
+  assert.throws(() => policy(oldFlat), /unknown fields/);
+});
+
+test("policy trust rejects forgery, authority replacement, truncation, duplicate keys, and invalid UTF-8", () => {
+  const changes = [change("src/main.spl")]; const first = subject(changes); const second = subject(changes, { policy_id: "policy-2" }); const fixture = policyFixture(first, second);
+  const forged = fixture.content.replace('"policy_id":"policy-1"', '"policy_id":"policy-x"');
+  assert.throws(() => parseSelfReviewPolicy(forged, policyTrust(forged)), /signature failed Ed25519 verification/);
+  const replacementAuthority = { ...policyAuthority, id: "github:user:attacker" }; const replaced = fixture.content.replaceAll(JSON.stringify(policyAuthority), JSON.stringify(replacementAuthority));
+  assert.throws(() => parseSelfReviewPolicy(replaced, policyTrust(replaced)), /authority does not match independently pinned trust/);
+  const truncated = fixture.content.split("\n").slice(0, 2).join("\n");
+  assert.throws(() => parseSelfReviewPolicy(truncated, fixture.trust), /independently pinned digest/);
+  const duplicate = `{"schema":"${selfReviewSchemas.policy_db}","record_type":"header","default_allow":true,"default_allow":false,"max_ttl_seconds":86400,"authority":${JSON.stringify(policyAuthority)}}`;
+  assert.throws(() => parseSelfReviewPolicy(duplicate, policyTrust(duplicate)), /duplicate key: default_allow/);
+  const otherKeys = generateKeyPairSync("ed25519"); const wrongKey = otherKeys.publicKey.export({ type: "spki", format: "pem" });
+  assert.throws(() => parseSelfReviewPolicy(fixture.content, { ...fixture.trust, public_key_pem: wrongKey }), /signature failed Ed25519 verification/);
+  const directory = mkdtempSync(join(tmpdir(), "spipe-policy-")); try { const policyPath = join(directory, "policy.jsonl"); const trustPath = join(directory, "trust.json"); const invalidPolicy = Buffer.from([0xc3, 0x28]); writeFileSync(policyPath, invalidPolicy); writeFileSync(trustPath, JSON.stringify({ ...fixture.trust, expected_policy_db_sha256: sha256(invalidPolicy) })); assert.throws(() => loadSelfReviewPolicy(policyPath, trustPath), /not valid UTF-8/); } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("policy and trust loaders reject UTF-8 BOM before parsing", () => {
+  const fixture = policyFixture(subject([change("src/main.spl")])); const directory = mkdtempSync(join(tmpdir(), "spipe-policy-bom-"));
+  try {
+    const policyPath = join(directory, "policy.jsonl"); const trustPath = join(directory, "trust.json");
+    writeFileSync(policyPath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(fixture.content)])); writeFileSync(trustPath, JSON.stringify(fixture.trust));
+    assert.throws(() => loadSelfReviewPolicy(policyPath, trustPath), /policy DB must not contain a UTF-8 BOM/);
+    writeFileSync(policyPath, fixture.content); writeFileSync(trustPath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(JSON.stringify(fixture.trust))]));
+    assert.throws(() => loadSelfReviewPolicy(policyPath, trustPath), /policy trust must not contain a UTF-8 BOM/);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("default allow covers ordinary code, text, and review policy after exact higher-model PASS", () => {
   const inputPolicy = policy(); const broker = authority([change("src/app/main.spl"), change("doc/guide.md"), change("src/review/admission.js")], { policy: inputPolicy });
   const decision = evaluateSelfReviewPrivilege(request(), inputPolicy, broker, now);
@@ -76,20 +134,22 @@ test("fixed secret, policy DB, and semantic authority restrictions cannot be ove
 });
 
 test("subject deny wins and constrain scopes narrow default allow", () => {
-  const deniedPolicy = policy(subject());
-  const subjectDecision = evaluateSelfReviewPrivilege(request(), deniedPolicy, authority([change("src/main.spl")], { policy: deniedPolicy }), now);
+  const deniedChanges = [change("src/main.spl")]; const deniedPolicy = policy(subject(deniedChanges));
+  const subjectDecision = evaluateSelfReviewPrivilege(request(), deniedPolicy, authority(deniedChanges, { policy: deniedPolicy }), now);
   assert.equal(subjectDecision.reason_code, "subject_denied"); assert.match(subjectDecision.remediation, /new explicit scoped policy/);
-  const constrainedPolicy = policy(subject({ effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [{ kind: "file", path: "src/app/blocked.spl" }] }));
-  assert.equal(evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/main.spl")], { policy: constrainedPolicy }), now).eligible, true);
-  const constrained = evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/nested/main.spl")], { policy: constrainedPolicy }), now);
+  const allowedChanges = [change("src/app/main.spl")]; const allowedPolicy = policy(subject(allowedChanges, { effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [{ kind: "file", path: "src/app/blocked.spl" }] }));
+  assert.equal(evaluateSelfReviewPrivilege(request(), allowedPolicy, authority(allowedChanges, { policy: allowedPolicy }), now).eligible, true);
+  const nestedChanges = [change("src/app/nested/main.spl")]; const nestedPolicy = policy(subject(nestedChanges, { effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [] }));
+  const constrained = evaluateSelfReviewPrivilege(request(), nestedPolicy, authority(nestedChanges, { policy: nestedPolicy }), now);
   assert.equal(constrained.reason_code, "constraint_not_satisfied"); assert.match(constrained.remediation, /narrow the pull request/);
-  const pathDenied = evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/blocked.spl")], { policy: constrainedPolicy }), now);
+  const blockedChanges = [change("src/app/blocked.spl")]; const blockedPolicy = policy(subject(blockedChanges, { effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [{ kind: "file", path: "src/app/blocked.spl" }] }));
+  const pathDenied = evaluateSelfReviewPrivilege(request(), blockedPolicy, authority(blockedChanges, { policy: blockedPolicy }), now);
   assert.equal(pathDenied.reason_code, "path_denied"); assert.match(pathDenied.remediation, /split the denied paths/);
 });
 
 test("rename evaluates both endpoints and symlink/traversal shapes fail closed", () => {
-  const constrainedPolicy = policy(subject({ effect: "constrain", allow_scopes: [{ kind: "directory_recursive", path: "src/new" }], deny_scopes: [] }));
   const renamed = change("src/new/file.spl", { status: "renamed", old_path: "src/old/file.spl", new_path: "src/new/file.spl" });
+  const constrainedPolicy = policy(subject([renamed], { effect: "constrain", allow_scopes: [{ kind: "directory_recursive", path: "src/new" }], deny_scopes: [] }));
   assert.equal(evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([renamed], { policy: constrainedPolicy }), now).eligible, false);
   const inputPolicy = policy();
   assert.throws(() => evaluateSelfReviewPrivilege(request(), inputPolicy, authority([change("src/../secret")], { policy: inputPolicy }), now), /traversal/);
@@ -110,7 +170,7 @@ test("broker-only approval emits an exact-head admission check, never a PR appro
   assert.throws(() => approveSelfReview(request(), inputPolicy, { integrationId: "x", resolveSelfReview: broker.resolveSelfReview }, now), /admission broker/);
   const moved = authority([change("src/main.spl")], { policy: inputPolicy, admission: { head_sha: "e".repeat(40) } });
   assert.throws(() => approveSelfReview(request(), inputPolicy, moved, now), /head_sha mismatch/);
-  const deniedPolicy = policy(subject());
+  const deniedChanges = [change("src/main.spl")]; const deniedPolicy = policy(subject(deniedChanges));
   assert.throws(() => approveSelfReview(request(), deniedPolicy, authority([change("src/main.spl")], { policy: deniedPolicy }), now), /\[subject_denied\].*remediation: Use an independent reviewer/);
 });
 

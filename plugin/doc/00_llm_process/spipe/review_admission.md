@@ -135,18 +135,54 @@ invalidation mandatory. V1 requests/admissions do not carry those guarantees
 and are rejected rather than silently upgraded.
 
 Policy is an operator-owned UTF-8 JSONL database selected only by the MCP
-process's `SPIPE_SELF_REVIEW_POLICY_DB`. Its first record is:
+process's `SPIPE_SELF_REVIEW_POLICY_DB`. Independent trust is selected by
+`SPIPE_SELF_REVIEW_POLICY_TRUST`; it is a separately mounted operator-owned
+JSON object, never a record inside the policy database:
 
 ```json
-{"schema":"spipe-self-review-policy-db/1","record_type":"header","default_allow":true}
+{"schema":"spipe-self-review-policy-trust/1","authority":{"type":"operator_owned_external","id":"github:user:2378857","key_id":"operator-key-1"},"signature_algorithm":"ed25519","public_key_pem":"-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n","expected_policy_db_sha256":"<sha256-of-exact-policy-db-bytes>"}
 ```
 
-Signed, hash-chained subject records have effect `deny` or `constrain`. Empty
-repository/session/reviewer selectors are wildcards. A matching deny always
-wins. A constrain narrows default allow. Multiple file scopes form an exact
-file set. Rename evaluates old and new paths, copy the new path, and delete the
-old path. Absolute, traversal, non-canonical Unicode, symbolic-link, submodule,
-and malformed entries fail closed.
+The policy database's first record is:
+
+```json
+{"schema":"spipe-self-review-policy-db/2","record_type":"header","default_allow":true,"max_ttl_seconds":86400,"authority":{"type":"operator_owned_external","id":"github:user:2378857","key_id":"operator-key-1"}}
+```
+
+Each following closed `spipe-self-review-subject-policy/2` record has
+`record_type: "subject_policy"`, effect `deny` or `constrain`, and a nested
+exact subject: repository `{provider,id,node_id,name}`, PR number, head SHA,
+session ID, and reviewer `{provider,id,model}`. It also binds the exact changed
+path manifest SHA-256 and `higher_model_receipt_digest`. `issued_by` must equal
+the header authority, timestamps are canonical RFC3339 UTC with milliseconds,
+and validity may not exceed the header TTL or 24 hours. The first
+`previous_record_sha256` is 64 zeroes; later values are SHA-256 of the exact
+preceding JSONL line. The database digest is SHA-256 of its exact UTF-8 bytes.
+Every record signature is canonical base64 for a 64-byte Ed25519 signature over
+the UTF-8 bytes `spipe-self-review-subject-policy/2`, one LF, then recursively
+key-sorted compact JSON of the complete record with `signature` omitted. The
+parser verifies that signature with the independently pinned public key, and
+requires header and record authority to equal pinned trust. The independently
+pinned whole-database digest makes record replacement, reordering, and tail
+truncation fail even when the unkeyed hash chain remains internally shaped.
+Policy and trust file loading rejects a leading UTF-8 BOM and uses fatal UTF-8
+decoding. The policy digest is verified over the exact raw bytes before decode.
+Duplicate JSON object keys (including escape aliases), replacement bytes, CRLF, blank records, and
+surrounding record whitespace are rejected before authorization.
+
+Both historical `/1` shapes are rejected: Spipe's old header omitted authority
+and TTL, while Simple's old header omitted `record_type` and used Unix seconds,
+a different identity layout, and self-attested evidence. Those missing trust
+facts cannot be inferred by an adapter. Replace the operator-owned external
+bytes and independently pinned trust together, then obtain authenticated
+broker-signed higher-model evidence. Never rewrite live policy implicitly,
+accept a self-declared authority/key/digest, or label self-attestation as a
+receipt.
+
+A matching deny always wins. A constrain narrows default allow. Multiple file
+scopes form an exact file set. Rename evaluates old and new paths, copy the new
+path, and delete the old path. Absolute, traversal, non-canonical Unicode,
+symbolic-link, submodule, and malformed entries fail closed.
 
 | Scope | Matches |
 |---|---|

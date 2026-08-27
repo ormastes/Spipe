@@ -16,6 +16,7 @@ plugin:
     review_request: spipe-review-request/1
     review_admission: spipe-review-admission/1
     self_review_request: spipe-self-review-request/2
+    self_review_policy_db: spipe-self-review-policy-db/2
     self_review_decision: spipe-self-review-decision/2
     self_review_admission: spipe-self-review-admission/2
   capabilities:
