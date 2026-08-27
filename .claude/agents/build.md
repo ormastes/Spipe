@@ -1,68 +1,82 @@
-# Build Agent - Building and Releasing
+# Build Agent - Building, Testing, and Candidate Construction
 
-**Use when:** Building the project, creating releases, managing packages.
-**Skills:** `/release`
+**Use when:** ordinary builds, tests, debugging, packaging, or an explicitly
+requested immutable release candidate.
+**Skills:** `/release`, `/software-release` only for an explicit release or
+release-candidate request.
 
-## Quick Build Commands
+Read `doc/00_llm_process/skill_command/vcs_session_policy.md` before mutation.
+Development work remains on its recorded session-owned `work/*` branch in a
+non-main linked worktree, but an ordinary build is not a release candidate and
+must not be routed through release admission.
 
-```bash
-bin/simple build                    # Debug build
-bin/simple build --release          # Release build
-bin/simple build --bootstrap        # Bootstrap build (minimal)
+## Ordinary build, test, and debug path
 
-bin/simple test                     # Run all tests
-bin/simple build lint               # Run linter
-bin/simple build fmt                # Format code
-bin/simple build check              # All quality checks
-
-bin/simple build clean              # Clean artifacts
-bin/simple build bootstrap          # 3-stage bootstrap pipeline
-bin/simple build watch              # Watch mode (auto-rebuild)
-```
-
-## Running Tests
+Use the smallest command that answers the development question:
 
 ```bash
-bin/simple test                          # All tests
-bin/simple test path/to/spec.spl         # Single file
-bin/simple test --list                   # List tests
-bin/simple test --only-slow              # Slow tests only
+bin/simple build                    # Ordinary debug build
+bin/simple build --release          # Optimized local build; not a release candidate
+bin/simple build --bootstrap        # Minimal bootstrap build
+
+bin/simple test                     # Project test suite
+bin/simple test path/to/spec.spl    # Focused test file
+bin/simple test --list              # List tests
+bin/simple test --only-slow         # Explicit slow-test selection
+
+bin/simple build lint               # Project linter
+bin/simple build fmt                # Project formatter
+bin/simple build check              # Aggregate project checks
+bin/simple build clean              # Clean project build artifacts
+bin/simple build bootstrap          # Three-stage bootstrap pipeline
+bin/simple build watch              # Rebuild while debugging edits
 ```
 
-## Release Process
+Follow the target repository's current manifest and guide if it defines a
+different canonical wrapper. A normal build/test/debug invocation:
 
-1. Update version in `simple.sdn`
-2. Update `CHANGELOG.md`
-3. Commit: `jj commit -m "chore: Release vX.Y.Z"`
-4. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"` (use git for tags)
-5. Push: `jj bookmark set main -r @- && jj git push --bookmark main && git push origin vX.Y.Z`
-6. Monitor GitHub Actions
-7. Verify: `gh release view vX.Y.Z`
+- runs only the requested focused or project gate;
+- may produce disposable local artifacts in the session worktree;
+- does not create a candidate identity, qualification/admission receipt,
+  publication asset, protected-ref update, or release tag;
+- reports failures to the development phase instead of invoking release flow.
 
-## Version Types
+`--release` selects an optimized build mode. It does not by itself request a
+software release or immutable release candidate.
 
-| Type | Format | Stability |
-|------|--------|-----------|
-| Stable | `v1.2.3` | Production |
-| RC | `v1.2.3-rc.1` | Pre-release |
-| Beta | `v1.2.3-beta.1` | Feature testing |
-| Alpha | `v1.2.3-alpha.1` | Early testing |
+## Explicit release-candidate flow
 
-## Pre-Release Checklist
+Enter this path only when the user or protected release workflow explicitly
+requests candidate construction with a version/channel and target. Then:
 
-- [ ] All tests passing: `bin/simple test`
-- [ ] No lint warnings: `bin/simple build lint`
-- [ ] Version updated in `simple.sdn`
-- [ ] CHANGELOG.md updated
-- [ ] Local build verified
+1. Verify session ownership, worktree identity, target ref, base commit, and
+   expected target commit.
+2. Run the canonical focused and whole release gates against the exact source
+   head. Record toolchain, policy, support, source-tree, and build-graph
+   identities.
+3. Build the exact candidate once in isolated output/cache paths. Fail closed on
+   missing required rows, fallback artifacts, stale evidence, or identity drift.
+4. Package immutable artifacts and manifests. Qualification consumes those
+   exact artifacts and never rebuilds them.
+5. Hand the candidate and receipts to release admission. Do not integrate the
+   branch, publish assets, or create a tag from the build phase.
 
-## Binary Architecture
+Stable, RC, beta, and alpha candidates use the same identity and admission
+rules. Beta maintenance includes only caller-selected, reviewed bug-fix commits
+with exact provenance and renewed result-revision evidence; discovery never
+selects or applies fixes automatically.
 
-| Binary | Location | Purpose |
-|--------|----------|---------|
-| `simple` | `bin/simple` | CLI entry point |
-| `simple` | `bin/release/simple` | Release runtime (33MB) |
+## Tag boundary
 
-## See Also
+Build and ordinary ship phases never create or push release tags. Only the
+protected promotion authority may push exactly one signed annotated tag after
+the immutable candidate, qualification, admission, and target compare-and-swap
+all pass. Promotion reuses admitted artifacts without rebuilding.
 
-- `/release` - Full release guide with rollback procedures
+## Exit evidence
+
+For ordinary work, report the commands, exact source head, results, and local
+artifact paths needed for debugging. For an explicit candidate, additionally
+record the target ref/commit, candidate identity, source/artifact digests,
+verification and qualification receipts, and every blocked required row. A
+build is not a release and does not move a protected ref.

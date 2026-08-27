@@ -1,13 +1,29 @@
-<!-- generated-from: isolated session sync policy -->
+<!-- generated-from: isolated VCS session policy -->
 # Isolated Session Sync
 
-Sync only the current session-owned `work/*` branch from its declared protected target.
+Read `doc/00_llm_process/skill_command/vcs_session_policy.md` completely. Sync
+only the current session-owned `work/*` branch in its recorded non-main linked
+worktree.
 
-1. Verify the current path is the session's linked worktree and the branch/workspace owner matches the session manifest.
-2. Fetch the target and record its exact SHA.
-3. Rebase only a private work branch. A submitted branch requires renewed review and evidence. Protected refs, candidates, recovery refs, and tags are never rebased.
-4. Resolve policy/config conflicts semantically; regenerate projections instead of selecting one side blindly.
-5. Run affected gates, update the session manifest, and push only the owned work ref with lease/compare-and-swap.
-6. Submit through the integration authority. This skill never moves `main`, `release/*`, a candidate ref, or a release tag.
+1. Verify the physical worktree, owner, session ID, work branch, target ref,
+   base commit, and expected target commit against the session record.
+2. Fetch the declared target and record its exact commit. Stop if it is stale or
+   the current workspace is the protected main checkout.
+3. Rebase only a private unsubmitted work branch when policy permits. Renew all
+   affected review and verification evidence after any base, head, or diff
+   change.
+4. Resolve policy/configuration conflicts semantically and regenerate managed
+   projections from their authority; never choose one side wholesale by file
+   type.
+5. Run the affected gates, update the session receipt, and push only the owned
+   work ref with an exact lease or compare-and-swap.
+6. Submit the exact head through the repository's PR/integration authority.
 
-Reject main-worktree mutation, stale target SHA, branch/workspace ownership mismatch, unconditional force, and broad ref pushes.
+This skill never moves `main`, `release/*`, a candidate ref, recovery ref, or
+release tag. It never creates a release tag. Cleanup uses the identity-checked
+VCS workspace manager or recoverable trash only after integration or explicit
+abandonment; recursive force deletion is outside sync.
+
+Reject protected-branch or physical-main mutation, stale target commits,
+branch/worktree ownership mismatch, unrelated dirty work, unconditional force,
+broad ref pushes, wholesale conflict-side selection, and ambiguous cleanup.

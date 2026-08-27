@@ -1,125 +1,66 @@
-# VCS Agent - Version Control (JJ / Git)
+# VCS Agent - Isolated Session Control
 
-**Use when:** Committing, pushing, syncing, viewing history, managing changes.
+**Use when:** inspecting, committing, synchronizing, submitting, or cleaning up
+a development session.
 **Skills:** `/sync`
 
-## Quick Reference
+Read `doc/00_llm_process/skill_command/vcs_session_policy.md` completely before
+mutation. This agent operates only on one session-owned `work/*` branch in its
+recorded non-main linked worktree.
 
-| Task | JJ Command | Git Equivalent |
-|------|-----------|----------------|
-| Check status | `jj st` | `git status` |
-| View changes | `jj diff` | `git diff` |
-| Commit (snapshot) | `jj commit -m "message"` | `git add -A && git commit -m "message"` |
-| Describe working copy | `jj describe -m "message"` | `git commit --amend -m "message"` (before push) |
-| View history | `jj log` | `git log --oneline -20` |
-| Push to remote | `jj bookmark set main -r @- && jj git push --bookmark main` | `git push origin main` |
-| Fetch from remote | `jj git fetch` | `git fetch` |
-| Rebase on latest | `jj rebase -d main@origin` | `git rebase origin/main` |
-| Show change | `jj show <change_id>` | `git show <commit>` |
-| Abandon change | `jj abandon <change_id>` | `git reset` |
-| Squash into parent | `jj squash` | `git rebase -i` (squash) |
-| Edit past change | `jj edit <change_id>` | `git rebase -i` (edit) |
-| File count | `git ls-files \| wc -l` | Check tracked file count |
+## Session preflight
 
-## Key Concepts
+1. Fetch the declared target and record its exact commit.
+2. Verify the physical path is the recorded linked worktree, not the protected
+   main worktree.
+3. Verify the current branch is the recorded session-owned `work/*` branch.
+4. Verify the session record binds owner, session ID, worktree path, work
+   branch, target ref, base commit, and expected target commit.
+5. Stop on a stale target, ownership mismatch, protected ref, detached or shared
+   branch, unrelated dirty work, or an ambiguous workspace.
 
-- **Working copy IS a commit** - jj automatically tracks all file changes, no staging needed
-- **No staging area** - every save is already tracked; `jj commit` snapshots current state
-- **`describe` vs `commit`** - `describe` updates the current change's message; `commit` finalizes it and starts a new empty change
-- **Change IDs are stable** - unlike git commit hashes, jj change IDs survive rebases
-- **JJ-Change-Id trailer** - automatically appended to commit messages via config
+## Safe reference
 
-## Standard Workflow
+| Task | JJ | Git |
+|------|----|-----|
+| Status | `jj status` | `git status --short --branch` |
+| Diff | `jj diff` | `git diff --check && git diff` |
+| Fetch | `jj git fetch` | `git fetch origin --prune` |
+| Commit owned paths | `jj commit -m "<type>: <summary>"` | `git add <owned-paths> && git commit -m "<type>: <summary>"` |
+| Rebase private work | `jj rebase -d <target>@origin` | `git rebase origin/<target>` |
+| Push owned work ref | `jj git push --bookmark <work-branch>` | `git push origin HEAD:refs/heads/<work-branch>` |
 
-```bash
-# 1. Make code changes (auto-tracked by jj)
+After a rebase, renew every check or review whose binding includes the base,
+head, or diff. For an updated remote work ref, use the repository sync helper's
+exact lease/CAS form; never use an unconditional force.
 
-# 2. Check what changed
-jj st
-jj diff
+## Submission
 
-# 3. Commit
-jj commit -m "feat: add new feature"
+Push only the owned work ref. Submit its exact head through the repository's PR
+or integration authority and record the target commit, head commit, evidence
+digests, push receipt, and integration-request identity. This agent never moves
+`main`, `release/*`, candidate refs, recovery refs, or release tags.
 
-# 4. Push
-jj bookmark set main -r @-
-jj git push --bookmark main
-```
+Build and ordinary ship phases do not create tags. A release promotion
+authority may later push exactly one signed annotated tag for an immutable,
+qualified, admitted candidate; that is outside this agent's ordinary commit and
+sync flow.
 
-## Sync Workflow (Pull/Rebase/Push with Safety)
+## Conflicts and cleanup
 
-See `/sync` skill for full details. Key steps:
+Resolve source and policy conflicts semantically. Regenerate generated files
+from their authority and review the resulting diff; never choose one side
+wholesale because of a filename or extension.
 
-```bash
-# 1. Record file count
-FILE_COUNT=$(git ls-files | wc -l | tr -d ' ')
-
-# 2. Commit, fetch, rebase
-jj commit -m "<type>: <msg>"
-jj git fetch
-jj rebase -d main@origin
-
-# 3. Verify file count not reduced
-NEW_COUNT=$(git ls-files | wc -l | tr -d ' ')
-echo "Before: $FILE_COUNT, After: $NEW_COUNT"
-
-# 4. Push
-jj bookmark set main -r @-
-jj git push --bookmark main
-```
-
-## Orphan Prevention
-
-- **NEVER** leave commits detached from main
-- If orphans found: cherrypick onto main with `jj new main` + `jj restore --from <id>`
-- Or rebase: `jj rebase -r <id> -d main`
-
-## Worktree Sync
-
-If on a workspace, switch to main, sync, switch back:
-1. `cd` to main repo
-2. Run sync workflow
-3. `cd` back to worktree
-4. `jj workspace update-stale`
-
-## Fixing Past Changes
-
-```bash
-# Edit a past change (working copy moves to it)
-jj edit <change_id>
-# Make fixes, then create new change on top
-jj new
-
-# Squash current change into parent
-jj squash
-
-# Squash specific change into its parent
-jj squash -r <change_id>
-
-# Split a change
-jj split -r <change_id>
-```
+Cleanup is allowed only after the session is integrated or explicitly
+abandoned. Reconfirm the recorded path and identity, ensure no unrelated or
+unpushed work remains, then use the VCS workspace manager or a recoverable trash
+operation. Recursive force deletion is not a session-cleanup mechanism.
 
 ## Rules
 
-- NO branches - work directly on main
-- LINEAR history - squash if needed
-- NO orphan commits - everything on main
-- FILE COUNT GUARD - check before/after every rebase
-- Use jj as primary VCS (git commands available for tags, gh CLI)
-
-## Commit Message Format
-
-```
-<type>: <short description>
-
-[optional body]
-
-JJ-Change-Id: <auto-appended>
-```
-
-Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
-
-## See Also
-
-- `/sync` - Full sync workflow with file-count safety
+- One semantic change, one isolated session branch, one linked worktree.
+- Never work in the protected main checkout or directly update a protected ref.
+- Rebase only private unsubmitted work; a submitted head needs renewed evidence.
+- Push only the owned work ref with lease/CAS and submit through authority.
+- Preserve unrelated work and stop when ownership or cleanup scope is unclear.

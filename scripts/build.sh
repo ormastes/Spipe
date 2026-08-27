@@ -14,6 +14,7 @@ doc/00_llm_process/spipe/llm_model_research.md
 doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn
 doc/00_llm_process/spipe/review_admission.md
 doc/00_llm_process/skill_command
+doc/00_llm_process/skill_command/vcs_session_policy.md
 doc/00_llm_process/template
 doc/00_llm_process/project_expert
 doc/00_llm_process/project_expert/subproject_links.example.sdn
@@ -23,6 +24,11 @@ doc/00_llm_process/tool_expert
 .claude/skills/software-release.md
 .claude/skills/release.md
 .claude/skills/sync.md
+.claude/skills/lib/worktree.md
+.claude/agents/vcs.md
+.claude/agents/build.md
+.claude/agents/spipe/dev.md
+.claude/agents/spipe/ship.md
 .claude/templates/spipe_template.spl
 .codex/skills/dev/SKILL.md
 .codex/skills/sp_dev/SKILL.md
@@ -46,6 +52,7 @@ src/review/broker.js
 src/review/self_review.js
 src/cli/review_commands.js
 test/unit/release_policy_test.js
+test/unit/vcs_guidance_policy_test.js
 test/unit/review_admission_test.js
 test/unit/self_review_policy_test.js
 test/windows/setup_spipe_links_containment.ps1
@@ -76,6 +83,7 @@ plugin/src/review/self_review.js
 plugin/src/cli/review_commands.js
 plugin/doc/00_llm_process/spipe/review_admission.md
 plugin/doc/00_llm_process/skill_command/command/release.md
+plugin/doc/00_llm_process/skill_command/vcs_session_policy.md
 plugin/doc/00_llm_process/spipe/skill.md
 plugin/doc/00_llm_process/template/feature_skill.md
 plugin/doc/00_llm_process/project_expert/README.md
@@ -134,6 +142,7 @@ cmp src/review/self_review.js plugin/src/review/self_review.js
 cmp doc/00_llm_process/spipe/review_admission.md plugin/doc/00_llm_process/spipe/review_admission.md
 cmp doc/00_llm_process/spipe/skill.md plugin/doc/00_llm_process/spipe/skill.md
 cmp doc/00_llm_process/skill_command/command/release.md plugin/doc/00_llm_process/skill_command/command/release.md
+cmp doc/00_llm_process/skill_command/vcs_session_policy.md plugin/doc/00_llm_process/skill_command/vcs_session_policy.md
 printf '%s\n' '{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_promotion_plan"
 printf '%s\n' '{"jsonrpc":"2.0","id":51,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_withdrawal_plan"
 printf '%s\n' '{"jsonrpc":"2.0","id":52,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_review_admission_validate"
@@ -185,6 +194,7 @@ printf '%s\n' '{"jsonrpc":"2.0","id":44,"method":"tools/list","params":{}}' |
 rm -rf "$tmp_pack" "$tmp_install"
 
 node --test test/unit/release_policy_test.js
+node --test test/unit/vcs_guidance_policy_test.js
 node --test test/unit/review_admission_test.js
 node --test test/unit/self_review_policy_test.js
 
