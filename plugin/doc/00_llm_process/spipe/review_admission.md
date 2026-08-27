@@ -50,8 +50,9 @@ This is the canonical discovery command for searches such as `self approve`,
 `approve PR`, and `author cannot approve`. On same-author detection or a GitHub
 author-approval rejection, print and follow these steps:
 
-1. Resolve the live PR head, then run a high-capability exact-head review at
-   `high`, `xhigh`, `max`, or `ultra`. Record the session ID, model, effort,
+1. Before review, capture the live PR head as `HEAD_SHA`, then run a
+   high-capability exact-head review of that captured SHA at `high`, `xhigh`,
+   `max`, or `ultra`. Record the session ID, model, effort,
    verdict, and P0/P1 counts. Stop unless the result is `PASS`, `P0=0`, `P1=0`.
 2. Choose one protected implementation:
 
@@ -62,17 +63,24 @@ author-approval rejection, print and follow these steps:
      internal policy evaluation and emission. Do not call, combine, or reorder
      it with the generic MCP pair.
 
-3. For Simple, capture the exact head and dispatch once:
+3. For Simple, capture the exact head before starting the review. Only after
+   that captured SHA passes, dispatch it as the expected reviewed head:
 
    ```sh
    HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)
    gh workflow run review-admission.yml --repo ormastes/simple --ref main \
      -f pull_request_number="$PR_NUMBER" \
+     -f expected_head_sha="$HEAD_SHA" \
      -f session_id="$SESSION_ID" \
      -f reviewer_model="$REVIEWER_MODEL" \
      -f reviewer_effort="$REVIEWER_EFFORT" \
      -f self_attestation='PASS:0:0'
    ```
+
+   The trusted default-branch workflow independently resolves the live PR head
+   and must reject unless it equals `expected_head_sha`. This input binds the
+   review evidence; it does not give the caller authority to choose the emitted
+   check head.
 
 4. Poll the exact resolved SHA (repeat until the check reaches a terminal
    conclusion), then confirm the PR head is still identical:
