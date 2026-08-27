@@ -9,7 +9,7 @@ This is the semantic source for Simple/Spipe stable, alpha, beta, RC, patch, and
 1. Start one isolated release session with one `work/release/...` or `work/backport/...` branch and one physical worktree. The main worktree is read-only.
 2. Read the product version from `release/version.sdn`; all other version locations are checked projections.
 3. Use lowercase numbered prereleases: `X.Y.Z-alpha.N`, `X.Y.Z-beta.N`, or `X.Y.Z-rc.N`.
-4. Beta maintenance uses `release/X.Y`. Admit only a caller-selected, reviewed bug-fix commit through `simple release backport-check`; record source SHA, change/work IDs, target line/SHA, adaptation reason, review receipt, result SHA, and renewed evidence.
+4. Beta maintenance uses `release/X.Y`. Admit only a caller-selected, reviewed bug-fix commit through `simple release backport-check`; record source SHA, change/work IDs, target line/SHA, review receipt, result SHA, and renewed evidence. The shipped SPipe CLI/MCP requires an exact patch-equivalent cherry-pick (`adaptation_reason: none` and no adaptation receipt); adapted backports are unsupported until an authenticated broker is configured and exposed publicly.
 5. Integrate through the protected CAS authority. Never update `main` or `release/*` directly.
 6. Create a new immutable `candidate/vX.Y.Z[-pre.N]/aNNN` for every changed source/policy/support/toolchain input.
 7. Build and qualify the exact candidate once. Required failures or fallbacks block admission.
@@ -29,7 +29,7 @@ session start at exact release/X.Y
   -> create a new beta candidate attempt
 ```
 
-Do not automatically discover or cherry-pick “all fixes.” Do not accept feature commits, commit ranges, moving branch names, stale reviews, missing adaptation reasons, or evidence from the pre-backport revision.
+Do not automatically discover or cherry-pick “all fixes.” Do not accept feature commits, commit ranges, moving branch names, stale reviews, adapted patches, or evidence from the pre-backport revision.
 
 ## Release commands
 

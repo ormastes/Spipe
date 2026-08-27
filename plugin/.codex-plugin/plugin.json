@@ -1,7 +1,7 @@
 {
   "name": "spipe",
   "version": "0.2.0",
-  "description": "SPipe guarded release planning, process guidance, and MCP tools.",
+  "description": "SPipe guarded release sessions, planning, process guidance, and MCP tools.",
   "author": {
     "name": "Simple Project"
   },
@@ -16,12 +16,13 @@
   "interface": {
     "displayName": "SPipe",
     "shortDescription": "Guarded software-release planning and process tools",
-    "longDescription": "Plan isolated releases and broker-bound reviews. For GitHub authors, explain and emit the distinct scoped SPipe Self Review Admission check without claiming an APPROVED review.",
+    "longDescription": "Create and sync token-owned local Git release sessions, bind release plans to actual repository state, and explain broker-bound scoped self-review admission without claiming an APPROVED review.",
     "developerName": "Simple Project",
     "category": "Developer Tools",
-    "capabilities": ["Read", "Planning"],
+    "capabilities": ["Read", "Planning", "Local Workspace Write", "Network Fetch"],
     "defaultPrompt": [
       "Plan an isolated beta release.",
+      "Start or verify an owned release worktree.",
       "Check reviewed fixes for beta backporting.",
       "Validate an immutable candidate promotion.",
       "Create a server-side review request for a repository, pull request, session, or feature.",

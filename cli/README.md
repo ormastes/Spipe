@@ -20,19 +20,28 @@ node cli/spipe.js review-admission-validate '<json>'
 node cli/spipe.js self-review-guide
 ```
 
-The release commands are read-only. `release-guide` prints the canonical
-protected-release process, `release-capabilities` prints the policy schema and
-supported planning boundaries, and `release-version-check` verifies the sole
-version authority and every declared package/plugin projection. Provider
-mutation still requires a unique session, live protected-ref authority, and
-explicit approval.
+Release planners are read-only. Token-gated `release-session-start` and
+`release-session-sync` are the narrow local-mutation exception: they fetch,
+create, or rebase only an exact-state owned worktree/branch, while
+`release-session-status` proves its live Git state. `release-guide` prints the
+canonical protected-release process, `release-capabilities` prints the policy
+schema and supported boundaries, and `release-version-check` verifies the sole
+version authority and every declared package/plugin projection. Protected-ref
+or provider mutation still requires separate authority and explicit approval.
 
 The guarded operational commands each accept exactly one JSON object:
-`release-session-plan`, `release-main-fix-discovery-plan`,
+`release-session-plan`, `release-session-start`, `release-session-status`,
+`release-session-sync`, `release-main-fix-discovery-plan`,
 `release-beta-backport-plan`, `release-forward-port-plan`,
 `release-candidate-plan`, `release-promotion-plan`, and
-`release-withdrawal-plan`. They validate and hash evidence but never checkout,
-cherry-pick, build, tag, push, delete, overwrite, or publish.
+`release-withdrawal-plan`. Planners validate and hash evidence; session
+operations never cherry-pick, build, tag, push a protected ref, delete,
+overwrite, or publish.
+
+Beta-backport commands accept only an exact patch-equivalent cherry-pick:
+`adaptation_reason` must be `none`, and the verified command requires an empty
+adaptation receipt. Adapted backports return unsupported until an authenticated
+adaptation-review broker is configured and exposed by the shipped surface.
 
 Review requests cover repo/PR/session/feature scopes and reject caller-supplied
 head SHAs. CLI admission validation is explicitly non-authoritative: it checks

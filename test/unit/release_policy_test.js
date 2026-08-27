@@ -26,6 +26,7 @@ import {
   releaseContractHash
 } from "../../src/release/contract.js";
 import { createReleasePlan } from "../../src/release/planner.js";
+import { runReleaseCommand } from "../../src/cli/release_commands.js";
 import { checkVersionAuthority } from "../../src/release/version.js";
 import { createLineHandler } from "../../mcp/transport/stdio.js";
 import { createLineHandler as createPluginLineHandler } from "../../plugin/mcp/transport/stdio.js";
@@ -64,6 +65,10 @@ test("root version authority governs every root and plugin projection", () => {
   assert.match(manifest, /operational_release_planning: true/);
   assert.match(manifest, /main_fix_discovery_planning: true/);
   assert.match(manifest, /release_first_forward_port_validation: true/);
+  assert.match(manifest, /actual_git_session_proof: true/);
+  assert.match(manifest, /guarded_session_start_status_sync: true/);
+  assert.match(manifest, /local_workspace_mutation: true/);
+  assert.match(manifest, /protected_ref_mutation: false/);
   assert.match(manifest, /external_release_mutation: false/);
 });
 
@@ -125,11 +130,22 @@ test("MCP exposes read-only release policy surfaces", () => {
     assert.equal(tool.inputSchema.additionalProperties, false, `${name}: schema must reject unknown fields`);
     assert.deepEqual(tool.inputSchema.required.sort(), Object.keys(tool.inputSchema.properties).sort(), `${name}: every policy field is required`);
   }
+  for (const name of [
+    "spipe_release_session_start", "spipe_release_session_status", "spipe_release_session_sync",
+    "spipe_release_beta_backport_verified_plan", "spipe_release_candidate_verified_plan"
+  ]) {
+    const tool = tools.find((candidate) => candidate.name === name);
+    assert.ok(tool, `missing operational MCP tool: ${name}`);
+    assert.equal(tool.inputSchema.additionalProperties, false);
+    assert.deepEqual(tool.inputSchema.required.sort(), Object.keys(tool.inputSchema.properties).sort());
+  }
   const capabilities = callTool(root, "spipe_release_capabilities").content[0].text;
   assert.match(capabilities, /immutable_release_candidates=true/);
   assert.match(capabilities, /promote_without_rebuild=true/);
   assert.match(capabilities, /non_destructive_withdrawal_planning=true/);
   assert.match(capabilities, /external_release_mutation=false/);
+  assert.match(capabilities, /adapted_beta_backports=false/);
+  assert.match(capabilities, /authenticated_adaptation_broker_configured=false/);
   assert.match(capabilities, new RegExp(`contract_sha256=${releaseContractHash()}`));
 });
 
@@ -145,6 +161,12 @@ test("CLI, MCP, manifest, and plugin descriptor expose the same release policy",
     "promote_without_rebuild",
     "non_destructive_withdrawal_planning",
     "operational_release_planning",
+    "actual_git_session_proof",
+    "guarded_session_start_status_sync",
+    "verified_beta_backport_planning",
+    "verified_candidate_planning",
+    "local_workspace_mutation",
+    "remote_tracking_fetch",
     "main_fix_discovery_planning",
     "release_first_forward_port_validation"
   ]) {
@@ -153,7 +175,12 @@ test("CLI, MCP, manifest, and plugin descriptor expose the same release policy",
     assert.match(mcpCapabilities, new RegExp(`${capability}=true`));
   }
   assert.equal(descriptor.skills, "./skills/");
-  assert.deepEqual(descriptor.interface.capabilities, ["Read", "Planning"]);
+  for (const capability of ["adapted_beta_backports", "authenticated_adaptation_broker_configured"]) {
+    assert.match(manifest, new RegExp(`${capability}: false`));
+    assert.match(contractSource, new RegExp(`${capability}: false`));
+    assert.match(mcpCapabilities, new RegExp(`${capability}=false`));
+  }
+  assert.deepEqual(descriptor.interface.capabilities, ["Read", "Planning", "Local Workspace Write", "Network Fetch"]);
   for (const path of [
     "plugin/skills/spipe/SKILL.md",
     "plugin/skills/spipe-loop/SKILL.md",
@@ -180,6 +207,21 @@ test("guarded planners bind exact evidence and never perform mutation", () => {
   const withdrawal = JSON.parse(callTool(root, "spipe_release_withdrawal_plan", withdrawalInput()).content[0].text);
   assert.equal(withdrawal.mutation, "none");
   assert.match(withdrawal.next_action, /do not delete or overwrite/);
+});
+
+test("shipped CLI and MCP reject adapted beta backports as unsupported", () => {
+  const adapted = { ...backportInput(), adaptation_reason: "release-line semantic rewrite" };
+  const unsupported = /unsupported.*exact patch-equivalent cherry-pick.*authenticated adaptation review broker/i;
+  assert.throws(() => runReleaseCommand("release-beta-backport-plan", [JSON.stringify(adapted)]), unsupported);
+  assert.throws(() => callTool(root, "spipe_release_beta_backport_plan", adapted), unsupported);
+
+  const verified = {
+    ...adapted, adaptation_review_receipt_sha256: hash,
+    workspace_path: root, session_id: "release-1", owner_id: "codex:test"
+  };
+  assert.throws(() => runReleaseCommand("release-beta-backport-verified-plan", [JSON.stringify(verified)]), unsupported);
+  assert.throws(() => callTool(root, "spipe_release_beta_backport_verified_plan", verified), unsupported);
+  assert.equal(JSON.parse(callTool(root, "spipe_release_beta_backport_plan", backportInput()).content[0].text).operation, "beta-backport");
 });
 
 test("candidate identity matches Simple's ordered length-prefixed SHA256 contract", () => {
@@ -227,6 +269,8 @@ test("guarded planners fail closed on unsafe requests", () => {
   assert.throws(() => createReleasePlan("forward-port", { ...forwardPortInput(), evidence_main_result_commit_sha: "e".repeat(40) }), /does not bind/);
   assert.throws(() => createReleasePlan("forward-port", { ...forwardPortInput(), main_result_commit_sha: "c".repeat(40), evidence_main_result_commit_sha: "c".repeat(40) }), /new main result/);
   assert.throws(() => createReleasePlan("candidate", { ...candidateInput(), attempt: 2 }), /a002/);
+  assert.throws(() => createReleasePlan("candidate", { ...candidateInput(), version: "1.2.0-beta.0", candidate_ref: "candidate/v1.2.0-beta.0/a001" }), /version has invalid format/);
+  assert.throws(() => createReleasePlan("candidate", { ...candidateInput(), version: "1.2.0-rc.0", candidate_ref: "candidate/v1.2.0-rc.0/a001" }), /version has invalid format/);
   assert.throws(() => createReleasePlan("promotion", { ...promotionInput(), rebuild: true }), /rebuild must be false/);
   assert.throws(() => createReleasePlan("promotion", { ...promotionInput(), candidate_identity: hash }), /canonical admitted candidate/);
   assert.throws(() => createReleasePlan("promotion", { ...promotionInput(), build_graph_sha256: "c".repeat(64) }), /canonical admitted candidate/);

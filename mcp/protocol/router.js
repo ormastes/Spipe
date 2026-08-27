@@ -6,13 +6,13 @@ function result(id, value) {
   return { jsonrpc: "2.0", id, result: value };
 }
 
-export function createRouter({ moduleRoot, reviewAuthority }) {
+export function createRouter({ moduleRoot, reviewAuthority, releaseOwnerToken, env }) {
   return function route(message) {
     if (message.method === "initialize") return result(message.id, initializeResult());
     if (message.method === "tools/list") return result(message.id, { tools });
     if (message.method === "tools/call") {
       const params = message.params || {};
-      return result(message.id, callTool(moduleRoot, params.name, params.arguments || {}, { reviewAuthority }));
+      return result(message.id, callTool(moduleRoot, params.name, params.arguments || {}, { reviewAuthority, releaseOwnerToken, env }));
     }
     if (message.method === "resources/list") return result(message.id, { resources });
     if (message.method === "resources/read") return result(message.id, readResource(moduleRoot, message.params?.uri));

@@ -2,6 +2,11 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { releaseCapabilities, releaseContractHash, releaseOperations, releaseSchemas } from "../../src/release/contract.js";
 import { createReleasePlan } from "../../src/release/planner.js";
+import {
+  assertPublicExactBetaBackport, planPublicVerifiedBetaBackport, planVerifiedCandidate, releaseSessionStart, releaseSessionStatus,
+  releaseSessionSync, sessionAccessFields, sessionStartFields, sessionSyncFields,
+  verifiedBetaBackportFields, verifiedCandidateFields
+} from "../../src/release/session.js";
 import { checkVersionAuthority } from "../../src/release/version.js";
 import { createReviewRequest, validateReviewAdmission } from "../../src/review/admission.js";
 import { configuredReviewAuthority } from "../../src/review/broker.js";
@@ -22,6 +27,14 @@ function releasePlanSchema(operation) {
   return {
     type: "object",
     description: `Exact ${operation} planning facts. Unknown, missing, or malformed authority evidence is rejected.`,
+    properties: Object.fromEntries(fields.map((field) => [field, { type: booleanFields.has(field) ? "boolean" : integerFields.has(field) ? "integer" : arrayFields.has(field) ? "array" : "string" }])),
+    required: [...fields],
+    additionalProperties: false
+  };
+}
+function operationalReleaseSchema(fields) {
+  return {
+    type: "object",
     properties: Object.fromEntries(fields.map((field) => [field, { type: booleanFields.has(field) ? "boolean" : integerFields.has(field) ? "integer" : arrayFields.has(field) ? "array" : "string" }])),
     required: [...fields],
     additionalProperties: false
@@ -64,8 +77,13 @@ export const tools = Object.freeze([
   { name: "spipe_release_capabilities", description: "Return declared release/session/candidate schemas and safe planning capabilities.", inputSchema: { type: "object", properties: {} } },
   { name: "spipe_release_version_check", description: "Verify canonical SPipe version authority and all declared projections.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { name: "spipe_release_session_plan", description: "Validate and plan an isolated release session. Performs no workspace or ref mutation.", inputSchema: releasePlanSchema("isolated-session") },
-  { name: "spipe_release_beta_backport_plan", description: "Validate one exact reviewed caller-selected beta bug-fix backport. Performs no cherry-pick.", inputSchema: releasePlanSchema("beta-backport") },
+  { name: "spipe_release_session_start", description: "Fetch an exact target and create one locally owned worktree/branch. Requires SPIPE_RELEASE_SESSION_TOKEN; never changes a protected ref.", inputSchema: operationalReleaseSchema(sessionStartFields) },
+  { name: "spipe_release_session_status", description: "Verify configured ownership and actual Git worktree, branch, HEAD, base, cleanliness, and uniqueness.", inputSchema: operationalReleaseSchema(sessionAccessFields) },
+  { name: "spipe_release_session_sync", description: "Fetch and rebase only a clean token-owned session branch with exact-head and exact-target compare-and-swap checks.", inputSchema: operationalReleaseSchema(sessionSyncFields) },
+  { name: "spipe_release_beta_backport_plan", description: "Validate one exact patch-equivalent reviewed beta cherry-pick. Adapted backports are unsupported until an authenticated broker is configured; performs no cherry-pick.", inputSchema: releasePlanSchema("beta-backport") },
+  { name: "spipe_release_beta_backport_verified_plan", description: "Bind one exact patch-equivalent reviewed beta cherry-pick to an actual clean owned Git session. Adapted backports are unsupported; performs no cherry-pick.", inputSchema: operationalReleaseSchema(verifiedBetaBackportFields) },
   { name: "spipe_release_candidate_plan", description: "Validate an immutable build-once candidate plan. Performs no candidate creation or build.", inputSchema: releasePlanSchema("candidate") },
+  { name: "spipe_release_candidate_verified_plan", description: "Bind an immutable candidate plan to an actual clean owned Git session HEAD, policy digest, and absent create-once candidate ref.", inputSchema: operationalReleaseSchema(verifiedCandidateFields) },
   { name: "spipe_release_promotion_plan", description: "Validate exact admitted promotion inputs. Performs no tag, push, delete, rebuild, or publication.", inputSchema: releasePlanSchema("promotion") },
   { name: "spipe_release_withdrawal_plan", description: "Validate a non-destructive published-release withdrawal. Preserves tags, assets, artifacts, and history.", inputSchema: releasePlanSchema("withdrawal") },
   { name: "spipe_release_main_fix_discovery_plan", description: "Check supplied immutable snapshots for reviewed bug-fix candidates. Never selects or cherry-picks a fix.", inputSchema: releasePlanSchema("main-fix-discovery") },
@@ -168,6 +186,18 @@ export function callTool(moduleRoot, name, args = {}, options = {}) {
     spipe_release_main_fix_discovery_plan: "main-fix-discovery",
     spipe_release_forward_port_plan: "forward-port"
   };
-  if (releaseTools[name]) return text(JSON.stringify(createReleasePlan(releaseTools[name], args), null, 2));
+  const releaseOwnerOptions = { ownerToken: options.releaseOwnerToken, env: options.env };
+  const operationalReleaseTools = {
+    spipe_release_session_start: releaseSessionStart,
+    spipe_release_session_status: releaseSessionStatus,
+    spipe_release_session_sync: releaseSessionSync,
+    spipe_release_beta_backport_verified_plan: planPublicVerifiedBetaBackport,
+    spipe_release_candidate_verified_plan: planVerifiedCandidate
+  };
+  if (operationalReleaseTools[name]) return text(JSON.stringify(operationalReleaseTools[name](args, releaseOwnerOptions), null, 2));
+  if (releaseTools[name]) {
+    if (releaseTools[name] === "beta-backport") assertPublicExactBetaBackport(args);
+    return text(JSON.stringify(createReleasePlan(releaseTools[name], args), null, 2));
+  }
   throw new Error(`unknown tool: ${name}`);
 }

@@ -7,12 +7,18 @@ agent-process module.
 - `manifest.sdn` is a plain process manifest for non-Codex installers.
 
 The canonical version is projected from `../release/version.sdn`. The plugin
-includes guarded planning for isolated sessions, read-only main fix discovery,
+includes guarded token-owned local sessions, read-only main fix discovery,
 reviewed beta backports, release-first forward ports, immutable candidates,
 promote-without-rebuild, and non-destructive withdrawal. The CLI and MCP
-interfaces validate and hash supplied evidence but do not execute Git, builds,
-tags, pushes, deletions, overwrites, or publication. Installing the plugin does
-not confer protected repository or publication authority.
+interfaces can fetch, create a local worktree/branch, and rebase only the clean
+owned session after exact-state checks. They do not cherry-pick fixes or execute
+builds, tags, protected-ref pushes, deletions, overwrites, or publication.
+Installing the plugin does not confer protected repository or publication
+authority.
+
+The shipped CLI/MCP beta-backport planners accept only exact patch-equivalent
+cherry-picks. Adapted backports fail closed as unsupported until an
+authenticated adaptation-review broker is configured and exposed publicly.
 
 The plugin also projects non-mutating repo/PR/session/feature review requests
 and broker-verified `spipe-review-admission/1` validation. It cannot emit a

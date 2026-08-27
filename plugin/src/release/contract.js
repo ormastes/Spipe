@@ -1,7 +1,26 @@
 import { createHash } from "node:crypto";
 
-export const releaseSchemas = Object.freeze({ vcs_policy: "spipe-vcs/3", session: "spipe-session/1", release: "spipe-release/1", candidate: "spipe-candidate/1" });
-export const releaseCapabilities = Object.freeze({ isolated_sessions: true, reviewed_beta_backports: true, immutable_release_candidates: true, promote_without_rebuild: true, non_destructive_withdrawal_planning: true, operational_release_planning: true, main_fix_discovery_planning: true, release_first_forward_port_validation: true, external_release_mutation: false });
+export const releaseSchemas = Object.freeze({ vcs_policy: "spipe-vcs/3", session: "spipe-session/1", session_proof: "spipe-session-proof/1", release: "spipe-release/1", candidate: "spipe-candidate/1" });
+export const releaseCapabilities = Object.freeze({
+  isolated_sessions: true,
+  actual_git_session_proof: true,
+  guarded_session_start_status_sync: true,
+  reviewed_beta_backports: true,
+  verified_beta_backport_planning: true,
+  adapted_beta_backports: false,
+  authenticated_adaptation_broker_configured: false,
+  immutable_release_candidates: true,
+  verified_candidate_planning: true,
+  promote_without_rebuild: true,
+  non_destructive_withdrawal_planning: true,
+  operational_release_planning: true,
+  main_fix_discovery_planning: true,
+  release_first_forward_port_validation: true,
+  local_workspace_mutation: true,
+  remote_tracking_fetch: true,
+  protected_ref_mutation: false,
+  external_release_mutation: false
+});
 
 export const releaseProjectionContract = Object.freeze([
   ["isolated-session", "one isolated release session owns one work branch and one non-main worktree"],
