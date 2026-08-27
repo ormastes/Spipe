@@ -1,4 +1,8 @@
 import { createReleasePlan } from "../release/planner.js";
+import {
+  assertPublicExactBetaBackport, planPublicVerifiedBetaBackport, planVerifiedCandidate, releaseSessionStart,
+  releaseSessionStatus, releaseSessionSync
+} from "../release/session.js";
 
 const commandOperations = Object.freeze({
   "release-session-plan": "isolated-session",
@@ -11,8 +15,16 @@ const commandOperations = Object.freeze({
 });
 
 export function runReleaseCommand(command, args) {
+  const operational = {
+    "release-session-start": releaseSessionStart,
+    "release-session-status": releaseSessionStatus,
+    "release-session-sync": releaseSessionSync,
+    "release-beta-backport-verified-plan": planPublicVerifiedBetaBackport,
+    "release-candidate-verified-plan": planVerifiedCandidate
+  };
   const operation = commandOperations[command];
-  if (!operation) return { handled: false };
+  const handler = operational[command];
+  if (!operation && !handler) return { handled: false };
   if (args.length !== 1) throw new Error(`${command} requires exactly one JSON object argument`);
   let input;
   try {
@@ -20,6 +32,7 @@ export function runReleaseCommand(command, args) {
   } catch {
     throw new Error(`${command} input must be valid JSON`);
   }
-  console.log(JSON.stringify(createReleasePlan(operation, input), null, 2));
+  if (operation === "beta-backport") assertPublicExactBetaBackport(input);
+  console.log(JSON.stringify(handler ? handler(input) : createReleasePlan(operation, input), null, 2));
   return { handled: true };
 }

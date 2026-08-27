@@ -4,7 +4,7 @@ import { realpathSync, statSync } from "node:fs";
 
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\.(0|[1-9][0-9]*))?$/;
+const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\.([1-9][0-9]*))?$/;
 const RELEASE_LINE = /^release\/(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const WORK_REF = /^work\/[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9./-]*$/;

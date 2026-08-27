@@ -47,6 +47,7 @@ cli/spipe.js
 mcp/server.js
 src/release/contract.js
 src/release/planner.js
+src/release/session.js
 src/release/version.js
 src/review/contract.js
 src/review/admission.js
@@ -55,6 +56,7 @@ src/review/self_review.js
 src/cli/review_commands.js
 test/unit/release_policy_test.js
 test/unit/vcs_guidance_policy_test.js
+test/unit/release_session_test.js
 test/unit/review_admission_test.js
 test/unit/self_review_policy_test.js
 test/unit/self_review_guidance_test.js
@@ -78,6 +80,7 @@ plugin/scripts/setup-spipe-links.sh
 plugin/scripts/setup-spipe-links.ps1
 plugin/src/release/contract.js
 plugin/src/release/planner.js
+plugin/src/release/session.js
 plugin/src/release/version.js
 plugin/src/review/contract.js
 plugin/src/review/admission.js
@@ -141,6 +144,7 @@ cmp mcp/transport/stdio.js plugin/mcp/transport/stdio.js
 cmp src/format/stable.js plugin/src/format/stable.js
 cmp src/release/contract.js plugin/src/release/contract.js
 cmp src/release/planner.js plugin/src/release/planner.js
+cmp src/release/session.js plugin/src/release/session.js
 cmp src/release/version.js plugin/src/release/version.js
 cmp src/review/contract.js plugin/src/review/contract.js
 cmp src/review/admission.js plugin/src/review/admission.js
@@ -178,6 +182,7 @@ node cli/spipe.js release-withdrawal-plan "$withdrawal_json" | grep -q '"operati
 node plugin/cli/spipe.js release-withdrawal-plan "$withdrawal_json" | grep -q '"operation": "withdrawal"'
 printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"spipe_release_capabilities","arguments":{}}}' | node mcp/server.js | grep -q "immutable_release_candidates=true"
 printf '%s\n' '{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_release_main_fix_discovery_plan"
+printf '%s\n' '{"jsonrpc":"2.0","id":45,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_release_session_start"
 printf '%s\n' '{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"spipe_release_version_check","arguments":{}}}' | node plugin/mcp/server.js | grep -q '\\"valid\\": true'
 
 tmp_plugin="$(mktemp -d)"
@@ -204,6 +209,7 @@ rm -rf "$tmp_pack" "$tmp_install"
 
 node --test test/unit/release_policy_test.js
 node --test test/unit/vcs_guidance_policy_test.js
+node --test test/unit/release_session_test.js
 node --test test/unit/review_admission_test.js
 node --test test/unit/self_review_policy_test.js
 node --test test/unit/self_review_guidance_test.js

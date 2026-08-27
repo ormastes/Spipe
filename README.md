@@ -38,13 +38,19 @@ such as `.spipe/doc`, `.spipe/spipe_project`, `.spipe/spipe`, and
 When installed as an npm-style package, the binaries are `spipe` and
 `spipe-mcp`.
 
-Protected release operations are guarded planning surfaces, not mutation
-authority. The CLI and MCP server validate isolated sessions, periodic
-read-only discovery of reviewed fixes on the independent `main` trunk, explicit
-beta backports, mandatory forward-ports for approved release-first fixes,
-immutable build-once candidates, and promotion without rebuild. They never
-select or cherry-pick a fix, update a protected ref, build, tag, push, delete,
-or publish.
+Protected release operations include guarded local session mutation, but not
+protected-ref or publication authority. With `SPIPE_RELEASE_SESSION_TOKEN`
+configured, the CLI and MCP server can fetch an exact target, create one owned
+worktree/branch, verify its live Git path/branch/HEAD/base/uniqueness, and rebase
+that clean owned branch. Other release tools plan periodic fix discovery,
+explicit beta backports, mandatory forward-ports, immutable candidates, and
+promotion without rebuild. They never select or cherry-pick a fix, update a
+protected ref, build, tag, push, delete, or publish.
+
+Shipped CLI/MCP beta-backport planners support only an exact patch-equivalent
+cherry-pick (`adaptation_reason` must be `none`, and the verified adaptation
+receipt must be empty). Adapted backports fail closed as unsupported until an
+authenticated adaptation-review broker is configured and exposed publicly.
 
 ## Guarded release operations
 
@@ -53,10 +59,14 @@ plan:
 
 ```sh
 node cli/spipe.js release-session-plan '<json>'
+node cli/spipe.js release-session-start '<json>'
+node cli/spipe.js release-session-status '<json>'
+node cli/spipe.js release-session-sync '<json>'
 node cli/spipe.js release-main-fix-discovery-plan '<json>'
 node cli/spipe.js release-beta-backport-plan '<json>'
 node cli/spipe.js release-forward-port-plan '<json>'
 node cli/spipe.js release-candidate-plan '<json>'
+node cli/spipe.js release-candidate-verified-plan '<json>'
 node cli/spipe.js release-promotion-plan '<json>'
 node cli/spipe.js release-withdrawal-plan '<json>'
 ```

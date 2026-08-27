@@ -28,8 +28,13 @@ Tools:
 - `spipe_self_review_approve`
 - `spipe_self_review_guide`
 
-The release tools are read-only inspection surfaces. They report the packaged
-policy and schema capabilities; they do not grant authority to update a
+The beta-backport tools support only exact patch-equivalent cherry-picks.
+Adapted backports fail closed as unsupported until an authenticated
+adaptation-review broker is configured and exposed by the shipped MCP server.
+
+Release planners are read-only inspection surfaces. Token-gated session
+start/sync are the narrow exception: they fetch, create, or rebase only a
+verified owned local worktree/branch. No tool grants authority to update a
 protected ref, sign a tag, or publish a release.
 Main-fix discovery consumes an immutable caller-supplied snapshot, reports
 reviewed bug-fix candidates, and still requires the caller to select an exact

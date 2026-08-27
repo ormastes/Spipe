@@ -28,10 +28,21 @@ Commands:
   release-version-check Verify release/version.sdn and every declared projection.
   release-session-plan <json>
                        Validate and plan an isolated release session.
+  release-session-start <json>
+                       Fetch the exact target and create one owned local worktree/branch.
+  release-session-status <json>
+                       Verify ownership and actual Git worktree/branch/HEAD/base state.
+  release-session-sync <json>
+                       Fetch and rebase only the clean owned session branch.
   release-beta-backport-plan <json>
-                       Validate one reviewed, caller-selected beta bug-fix backport.
+                       Validate one exact patch-equivalent reviewed beta cherry-pick.
+  release-beta-backport-verified-plan <json>
+                       Bind that exact cherry-pick to an owned clean Git session.
+                       Adapted backports are unsupported until a trusted broker exists.
   release-candidate-plan <json>
                        Validate an immutable build-once candidate plan.
+  release-candidate-verified-plan <json>
+                       Bind a candidate plan to an actual owned clean Git session.
   release-promotion-plan <json>
                        Validate exact promote-without-rebuild inputs.
   release-withdrawal-plan <json>
@@ -1560,8 +1571,13 @@ switch (command) {
     for (const [name, value] of Object.entries(selfReviewProviderGuidance)) console.log(`self_review.${name}=${value}`);
     break;
   case "release-session-plan":
+  case "release-session-start":
+  case "release-session-status":
+  case "release-session-sync":
   case "release-beta-backport-plan":
+  case "release-beta-backport-verified-plan":
   case "release-candidate-plan":
+  case "release-candidate-verified-plan":
   case "release-promotion-plan":
   case "release-withdrawal-plan":
   case "release-main-fix-discovery-plan":
