@@ -20,7 +20,9 @@ PASS status without separately configured dedicated broker authority in an
 operator-owned MCP process. CLI receipt checks are shape/time planning only and
 always remain non-authoritative.
 
-User-authorized self-review uses `spipe_self_review_privilege_evaluate` and
+GitHub forbids a pull-request author from submitting an `APPROVED` review on
+their own PR. User-authorized self-review therefore uses
+`spipe_self_review_privilege_evaluate` and the compatibility-named
 `spipe_self_review_approve`. Ordinary code/text is default-eligible only after
 an authenticated exact-head higher-model PASS with no P0/P1, subject to the
 operator JSONL deny/constrain DB and fixed secret/policy-DB restrictions. The
@@ -30,4 +32,7 @@ Both resolution and admission bind session/request IDs, base repository/ref/SHA,
 merge base, and diff digest so receipt replay or PR retargeting fails closed.
 The broker also binds the protected target repository/ref and ruleset ID and
 must attest strict up-to-date required-status enforcement at resolution and
-check emission. Providers that cannot prove this contract are denied.
+check emission. Providers that cannot prove this contract are denied. New
+head/base/diff, retarget, ruleset/policy/receipt change, or expiry invalidates
+the result. Denied decisions expose the exact reason, affected policy/path, and
+remediation.

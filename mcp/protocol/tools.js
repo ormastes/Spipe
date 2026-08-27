@@ -7,7 +7,7 @@ import { createReviewRequest, validateReviewAdmission } from "../../src/review/a
 import { configuredReviewAuthority } from "../../src/review/broker.js";
 import {
   approveSelfReview, evaluateSelfReviewPrivilege, loadSelfReviewPolicy,
-  selfReviewRequestFields, selfReviewSchemas
+  selfReviewProviderGuidance, selfReviewRequestFields, selfReviewSchemas
 } from "../../src/review/self_review.js";
 import {
   fallbackAdmissionFields, independentAdmissionFields, reviewCapabilities,
@@ -73,8 +73,9 @@ export const tools = Object.freeze([
   { name: "spipe_review_request_create", description: "Create a non-mutating repo/PR/session/feature review request. Caller head SHAs are rejected; the broker resolves the head.", inputSchema: reviewRequestSchema },
   { name: "spipe_review_admission_validate", description: "Validate an exact-head, exact-check review receipt through the configured pinned broker. Unavailable without broker authority.", inputSchema: reviewAdmissionSchema },
   { name: "spipe_review_capabilities", description: "Return review request/admission schemas and fail-closed broker capabilities.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-  { name: "spipe_self_review_privilege_evaluate", description: "Resolve the live PR head/diff and exact higher-model receipt through the pinned broker, then evaluate the operator-owned session grant DB without mutation. Caller head/diff fields are rejected.", inputSchema: selfReviewRequestSchema },
-  { name: "spipe_self_review_approve", description: "After a passing scoped evaluation, ask the configured broker identity to re-resolve and emit SPipe Self Review Admission on that exact PR head/diff. It never submits a provider PR approval.", inputSchema: selfReviewRequestSchema }
+  { name: "spipe_self_review_guide", description: "Explain why GitHub authors cannot APPROVE their own pull requests and how the distinct short-lived SPipe Self Review Admission check is scoped, denied, and invalidated.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "spipe_self_review_privilege_evaluate", description: "For a user-authorized request, resolve the live PR head/diff and exact higher-model receipt, then apply default ordinary code/text eligibility plus operator deny/constrain and fixed restrictions. Returns exact reason_code and remediation; caller head/diff fields are rejected.", inputSchema: selfReviewRequestSchema },
+  { name: "spipe_self_review_approve", description: "Compatibility-named admission action: after allow, re-resolve and emit only SPipe Self Review Admission on the exact PR head/base/diff/ruleset. GitHub forbids an author APPROVED review, so this never submits one.", inputSchema: selfReviewRequestSchema }
 ]);
 
 function text(content) {
@@ -134,6 +135,7 @@ export function callTool(moduleRoot, name, args = {}, options = {}) {
   if (name === "spipe_fine_tune_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/llm_finetune.md"));
   if (name === "spipe_fine_tune_model_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/llm_model_research.md"));
   if (name === "spipe_fine_tune_template") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn"));
+  if (name === "spipe_self_review_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/spipe/review_admission.md"));
   if (name === "spipe_release_guide") return text(readDoc(moduleRoot, "doc/00_llm_process/skill_command/command/release.md"));
   if (name === "spipe_release_capabilities") return text([
     ...Object.entries(releaseSchemas).map(([key, value]) => `${key}=${value}`),
@@ -144,7 +146,8 @@ export function callTool(moduleRoot, name, args = {}, options = {}) {
   if (name === "spipe_review_capabilities") return text([
     ...Object.entries(reviewSchemas).map(([key, value]) => `${key}=${value}`),
     ...Object.entries(selfReviewSchemas).map(([key, value]) => `self_review_${key}=${value}`),
-    ...Object.entries(reviewCapabilities).map(([key, value]) => `${key}=${value}`)
+    ...Object.entries(reviewCapabilities).map(([key, value]) => `${key}=${value}`),
+    ...Object.entries(selfReviewProviderGuidance).map(([key, value]) => `self_review_${key}=${value}`)
   ].join("\n"));
   if (name === "spipe_review_request_create") return text(JSON.stringify(createReviewRequest(args), null, 2));
   if (name === "spipe_review_admission_validate") return text(JSON.stringify(validateReviewAdmission(args, options.reviewAuthority || configuredReviewAuthority()), null, 2));

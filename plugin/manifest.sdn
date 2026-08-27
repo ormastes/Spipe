@@ -1,7 +1,7 @@
 plugin:
   name: spipe
   version: 0.2.0
-  description: Reusable SPipe feature-development process module
+  description: Reusable SPipe development, release, and scoped self-review admission module
   cli: cli/spipe.js
   mcp: mcp/server.js
   setup:
@@ -35,3 +35,6 @@ plugin:
     broker_only_self_review_admission_check: true
     operator_owned_text_policy_db: true
     self_review_ruleset_requires_exact_check: true
+    provider_author_approval: false
+    user_authorized_self_review_only: true
+    structured_self_review_rejection_guidance: true

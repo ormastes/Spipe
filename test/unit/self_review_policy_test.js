@@ -26,7 +26,12 @@ function authority(changes, overrides = {}) {
 function subject(overrides = {}) { return { schema: selfReviewSchemas.subject_policy, record_type: "subject_policy", policy_id: "policy-1", effect: "deny", repository_id: "42", session_id: "session-7", reviewer_id: "codex:session-7", allow_scopes: [], deny_scopes: [], issued_by: { type: "User", id: 2378857 }, issued_at: "2026-08-27T10:00:00.000Z", not_before: "2026-08-27T10:00:00.000Z", expires_at: "2026-08-27T14:00:00.000Z", issuer_key_id: "owner:key-1", previous_record_sha256: "", signature: "test-signature", ...overrides }; }
 
 test("headless request plan cannot accept caller head or diff", () => {
-  assert.equal(planSelfReviewRequest(request()).decision, "pending");
+  const planned = planSelfReviewRequest(request());
+  assert.equal(planned.decision, "pending");
+  assert.match(planned.provider_guidance.provider_review_reason, /GitHub forbids/);
+  assert.match(planned.default_policy, /user did not authorize/);
+  assert.deepEqual(planned.scope_kinds, ["code", "text", "file", "directory_files", "directory_recursive"]);
+  assert.ok(planned.invalidation.includes("new head commit"));
   assert.throws(() => planSelfReviewRequest({ ...request(), head_sha: head }), /unknown fields: head_sha/);
   assert.throws(() => planSelfReviewRequest({ ...request(), changed_paths: [] }), /unknown fields: changed_paths/);
 });
@@ -43,13 +48,13 @@ test("MCP and plugin expose identical headless evaluate/admit request schemas", 
 test("default allow covers ordinary code, text, and review policy after exact higher-model PASS", () => {
   const inputPolicy = policy(); const broker = authority([change("src/app/main.spl"), change("doc/guide.md"), change("src/review/admission.js")], { policy: inputPolicy });
   const decision = evaluateSelfReviewPrivilege(request(), inputPolicy, broker, now);
-  assert.equal(decision.eligible, true); assert.equal(decision.reason_code, "default_allow_exact_review"); assert.deepEqual(decision.matched_restriction_ids, []);
+  assert.equal(decision.eligible, true); assert.equal(decision.reason_code, "default_allow_exact_review"); assert.match(decision.reason, /ordinary reviewed code\/text/); assert.match(decision.remediation, /user authorization/); assert.deepEqual(decision.matched_restriction_ids, []);
 });
 
 test("fixed secret and policy DB restrictions cannot be overridden", () => {
   for (const [path, restriction] of [["config/.env.production", "SELF001"], [".spipe/self-review-policy.jsonl", "SELF005"]]) {
     const inputPolicy = policy(); const decision = evaluateSelfReviewPrivilege(request(), inputPolicy, authority([change(path)], { policy: inputPolicy }), now);
-    assert.equal(decision.eligible, false); assert.deepEqual(decision.matched_restriction_ids, [restriction]);
+    assert.equal(decision.eligible, false); assert.equal(decision.reason_code, "fixed_restriction"); assert.match(decision.remediation, /independent reviewer/); assert.deepEqual(decision.matched_restriction_ids, [restriction]);
   }
   const inputPolicy = policy(); const semantic = change("doc/deployment.md", { semantic_flags: ["credentials_or_secrets"] });
   assert.equal(evaluateSelfReviewPrivilege(request(), inputPolicy, authority([semantic], { policy: inputPolicy }), now).reason_code, "fixed_restriction");
@@ -60,11 +65,14 @@ test("fixed secret and policy DB restrictions cannot be overridden", () => {
 
 test("subject deny wins and constrain scopes narrow default allow", () => {
   const deniedPolicy = policy(subject());
-  assert.equal(evaluateSelfReviewPrivilege(request(), deniedPolicy, authority([change("src/main.spl")], { policy: deniedPolicy }), now).reason_code, "subject_denied");
+  const subjectDecision = evaluateSelfReviewPrivilege(request(), deniedPolicy, authority([change("src/main.spl")], { policy: deniedPolicy }), now);
+  assert.equal(subjectDecision.reason_code, "subject_denied"); assert.match(subjectDecision.remediation, /new explicit scoped policy/);
   const constrainedPolicy = policy(subject({ effect: "constrain", allow_scopes: [{ kind: "directory_files", path: "src/app" }], deny_scopes: [{ kind: "file", path: "src/app/blocked.spl" }] }));
   assert.equal(evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/main.spl")], { policy: constrainedPolicy }), now).eligible, true);
-  assert.equal(evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/nested/main.spl")], { policy: constrainedPolicy }), now).reason_code, "constraint_not_satisfied");
-  assert.equal(evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/blocked.spl")], { policy: constrainedPolicy }), now).reason_code, "path_denied");
+  const constrained = evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/nested/main.spl")], { policy: constrainedPolicy }), now);
+  assert.equal(constrained.reason_code, "constraint_not_satisfied"); assert.match(constrained.remediation, /narrow the pull request/);
+  const pathDenied = evaluateSelfReviewPrivilege(request(), constrainedPolicy, authority([change("src/app/blocked.spl")], { policy: constrainedPolicy }), now);
+  assert.equal(pathDenied.reason_code, "path_denied"); assert.match(pathDenied.remediation, /split the denied paths/);
 });
 
 test("rename evaluates both endpoints and symlink/traversal shapes fail closed", () => {
@@ -85,9 +93,12 @@ test("broker-only approval emits an exact-head admission check, never a PR appro
   const inputPolicy = policy(); const broker = authority([change("src/main.spl")], { policy: inputPolicy });
   const admitted = approveSelfReview(request(), inputPolicy, broker, now);
   assert.equal(admitted.admitted, true); assert.equal(admitted.mutation, "provider_status_check"); assert.equal(admitted.status_context, "SPipe Self Review Admission"); assert.equal(Object.hasOwn(admitted, "provider_review_id"), false);
+  assert.equal(admitted.provider_review_action, "none"); assert.match(admitted.provider_review_reason, /GitHub forbids/);
   assert.throws(() => approveSelfReview(request(), inputPolicy, { integrationId: "x", resolveSelfReview: broker.resolveSelfReview }, now), /admission broker/);
   const moved = authority([change("src/main.spl")], { policy: inputPolicy, admission: { head_sha: "e".repeat(40) } });
   assert.throws(() => approveSelfReview(request(), inputPolicy, moved, now), /head_sha mismatch/);
+  const deniedPolicy = policy(subject());
+  assert.throws(() => approveSelfReview(request(), deniedPolicy, authority([change("src/main.spl")], { policy: deniedPolicy }), now), /\[subject_denied\].*remediation: Use an independent reviewer/);
 });
 
 test("resolution is exact, authenticated, current, and bound to the higher-model receipt", () => {

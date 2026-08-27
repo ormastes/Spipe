@@ -10,3 +10,7 @@ material under `doc/00_llm_process/spipe/`.
 
 For test-writing skill details see [`skill.md`](skill.md).
 For the continuous-check loop see [`loop.md`](loop.md).
+For provider review and self-review admission see
+[`review_admission.md`](review_admission.md). GitHub authors cannot approve
+their own pull requests; SPipe uses a separate short-lived exact-revision
+required check and reports exact denial remediation.

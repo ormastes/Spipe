@@ -17,6 +17,7 @@ node cli/spipe.js release-capabilities
 node cli/spipe.js release-version-check
 node cli/spipe.js review-request-create '<json>'
 node cli/spipe.js review-admission-validate '<json>'
+node cli/spipe.js self-review-guide
 ```
 
 The release commands are read-only. `release-guide` prints the canonical
@@ -41,6 +42,10 @@ belongs only to an operator-owned MCP server whose dedicated broker re-resolves
 the live head and exact check set before PASS is accepted.
 `self-review-request-plan` validates only a headless scoped request. CLI output
 is never an admission decision and cannot emit `SPipe Self Review Admission`.
+`self-review-guide` explains that GitHub authors cannot `APPROVE` their own PRs,
+that ordinary code/text is only default-eligible after user authorization, and
+how operator scopes, invalidation, exact rejection reasons, and remediation
+work.
 
 Fine-tune process examples:
 

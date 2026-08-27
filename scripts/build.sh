@@ -13,8 +13,10 @@ doc/00_llm_process/spipe/llm_finetune.md
 doc/00_llm_process/spipe/llm_model_research.md
 doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn
 doc/00_llm_process/spipe/review_admission.md
+doc/00_llm_process/spipe/self_review_skill.md
 doc/00_llm_process/skill_command
 doc/00_llm_process/skill_command/vcs_session_policy.md
+doc/00_llm_process/skill_command/skills/pipe/self-review/skill.md
 doc/00_llm_process/template
 doc/00_llm_process/project_expert
 doc/00_llm_process/project_expert/subproject_links.example.sdn
@@ -55,6 +57,7 @@ test/unit/release_policy_test.js
 test/unit/vcs_guidance_policy_test.js
 test/unit/review_admission_test.js
 test/unit/self_review_policy_test.js
+test/unit/self_review_guidance_test.js
 test/windows/setup_spipe_links_containment.ps1
 plugin/.codex-plugin/plugin.json
 plugin/package.json
@@ -82,6 +85,7 @@ plugin/src/review/broker.js
 plugin/src/review/self_review.js
 plugin/src/cli/review_commands.js
 plugin/doc/00_llm_process/spipe/review_admission.md
+plugin/doc/00_llm_process/spipe/self_review_skill.md
 plugin/doc/00_llm_process/skill_command/command/release.md
 plugin/doc/00_llm_process/skill_command/vcs_session_policy.md
 plugin/doc/00_llm_process/spipe/skill.md
@@ -90,6 +94,7 @@ plugin/doc/00_llm_process/project_expert/README.md
 plugin/doc/00_llm_process/domain_expert/README.md
 plugin/doc/00_llm_process/tool_expert/README.md
 scripts/setup-spipe-links.sh
+scripts/project-self-review-guidance.js
 plugin
 mcp
 cli
@@ -110,6 +115,8 @@ fi
 
 node --check cli/spipe.js >/dev/null
 node --check mcp/server.js >/dev/null
+node --check scripts/project-self-review-guidance.js >/dev/null
+node scripts/project-self-review-guidance.js --check >/dev/null
 canonical_version="$(node cli/spipe.js --version)"
 if git -C ../.. rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git -C ../.. ls-files --stage examples/spipe | grep -q '^100'
@@ -140,6 +147,7 @@ cmp src/review/admission.js plugin/src/review/admission.js
 cmp src/review/broker.js plugin/src/review/broker.js
 cmp src/review/self_review.js plugin/src/review/self_review.js
 cmp doc/00_llm_process/spipe/review_admission.md plugin/doc/00_llm_process/spipe/review_admission.md
+cmp doc/00_llm_process/spipe/self_review_skill.md plugin/doc/00_llm_process/spipe/self_review_skill.md
 cmp doc/00_llm_process/spipe/skill.md plugin/doc/00_llm_process/spipe/skill.md
 cmp doc/00_llm_process/skill_command/command/release.md plugin/doc/00_llm_process/skill_command/command/release.md
 cmp doc/00_llm_process/skill_command/vcs_session_policy.md plugin/doc/00_llm_process/skill_command/vcs_session_policy.md
@@ -147,6 +155,7 @@ printf '%s\n' '{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}' | nod
 printf '%s\n' '{"jsonrpc":"2.0","id":51,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_release_withdrawal_plan"
 printf '%s\n' '{"jsonrpc":"2.0","id":52,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_review_admission_validate"
 printf '%s\n' '{"jsonrpc":"2.0","id":53,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_self_review_privilege_evaluate"
+printf '%s\n' '{"jsonrpc":"2.0","id":54,"method":"tools/list","params":{}}' | node plugin/mcp/server.js | grep -q "spipe_self_review_guide"
 printf '%s\n' '{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"spipe://skill"}}' | node plugin/mcp/server.js | grep -q "SPipe"
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | node mcp/server.js | grep -q "spipe_fine_tune_guide"
 printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"spipe_fine_tune_template","arguments":{}}}' | node mcp/server.js | grep -q "attempt_id"
@@ -197,6 +206,7 @@ node --test test/unit/release_policy_test.js
 node --test test/unit/vcs_guidance_policy_test.js
 node --test test/unit/review_admission_test.js
 node --test test/unit/self_review_policy_test.js
+node --test test/unit/self_review_guidance_test.js
 
 tmp_host="$(mktemp -d)"
 trap 'rm -rf "$tmp_host"' EXIT
