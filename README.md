@@ -76,11 +76,13 @@ boundary. Neither command replaces release or npm environment approvals.
 GitHub forbids a pull-request author from submitting an `APPROVED` review on
 their own PR. SPipe therefore uses the separate short-lived
 `SPipe Self Review Admission` required check; it never claims a GitHub approval.
-The user must request/authorize this path. Ordinary reviewed code/text is then
+The closed request must carry current user-authorization actor/timestamp/receipt
+evidence which the broker authenticates. Ordinary reviewed code/text is then
 default-eligible, subject to operator JSONL deny/constrain policy and fixed
-secret/self-review-authority restrictions. The broker binds the exact head,
-base, diff, ruleset, policy, receipt, and expiry; changed input requires a fresh
-review and evaluation. Denials return an exact reason code and remediation.
+secret/ruleset/signing/review-authority restrictions. The broker binds the exact
+head, base, diff, ruleset, policy, receipts, and expiry, and registers fail-closed
+status invalidation; changed or expired input requires fresh authorization,
+review, and evaluation. Denials return an exact reason code and remediation.
 
 The CLI also owns the reusable LLM fine-tune process. It can initialize host
 attempt registries, record data downloads, model research, base-model choice,

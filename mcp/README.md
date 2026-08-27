@@ -56,11 +56,14 @@ check through the pinned broker; it never submits a provider PR approval. The
 broker must bind the session/request and base repository/ref/SHA, merge base,
 and diff digest on both resolution and admission re-resolution. It must also
 prove the exact target repository/ref is protected by the same provider
-ruleset with strict up-to-date required-status enforcement. It runs only after
-user authorization; ordinary code/text is default-eligible while operator
-deny/constrain and fixed restrictions win. Missing proof, a changed head/base/
-diff/ruleset/policy/receipt, retargeting, or expiry fails closed. Policy denials
-return exact `reason_code`, affected paths, and `remediation`.
+ruleset with strict up-to-date required-status enforcement. The request carries
+current user-authorization actor/timestamp/receipt evidence and the broker must
+authenticate it. Ordinary code/text is default-eligible while operator
+deny/constrain and fixed authority restrictions win. Admission repeats the
+expiry and requires registered fail-closed check invalidation on bound-input
+change or expiry. Missing proof, changed head/base/diff/ruleset/policy/receipt,
+retargeting, or expiry fails closed. Policy denials return exact `reason_code`,
+affected paths, and `remediation`.
 
 Resource:
 

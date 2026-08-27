@@ -14,9 +14,9 @@ plugin:
     candidate: spipe-candidate/1
     review_request: spipe-review-request/1
     review_admission: spipe-review-admission/1
-    self_review_request: spipe-self-review-request/1
-    self_review_decision: spipe-self-review-decision/1
-    self_review_admission: spipe-self-review-admission/1
+    self_review_request: spipe-self-review-request/2
+    self_review_decision: spipe-self-review-decision/2
+    self_review_admission: spipe-self-review-admission/2
   capabilities:
     isolated_sessions: true
     reviewed_beta_backports: true
@@ -37,4 +37,6 @@ plugin:
     self_review_ruleset_requires_exact_check: true
     provider_author_approval: false
     user_authorized_self_review_only: true
+    explicit_user_authorization_evidence: true
+    broker_registered_status_invalidation: true
     structured_self_review_rejection_guidance: true

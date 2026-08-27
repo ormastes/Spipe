@@ -47,8 +47,8 @@ Commands:
   review-capabilities  Print review request/admission schemas and capabilities.
   self-review-guide    Explain GitHub author-approval limits and SPipe admission policy.
   self-review-request-plan <json>
-                       Plan a user-authorized scoped request. GitHub forbids author APPROVED reviews;
-                       SPipe can emit only its exact short-lived admission check.
+                       Require explicit user-authorization receipt evidence and plan a scoped request.
+                       GitHub forbids author APPROVED reviews; SPipe emits only its expiring check.
   fine-tune-guide      Print the LLM fine-tune process guide.
   fine-tune-model-guide
                        Print the LLM base-model research guide.

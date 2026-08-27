@@ -43,9 +43,9 @@ the live head and exact check set before PASS is accepted.
 `self-review-request-plan` validates only a headless scoped request. CLI output
 is never an admission decision and cannot emit `SPipe Self Review Admission`.
 `self-review-guide` explains that GitHub authors cannot `APPROVE` their own PRs,
-that ordinary code/text is only default-eligible after user authorization, and
-how operator scopes, invalidation, exact rejection reasons, and remediation
-work.
+that ordinary code/text is only default-eligible after current explicit
+authorization evidence, and how operator scopes, broker-registered status
+invalidation, exact rejection reasons, and remediation work.
 
 Fine-tune process examples:
 
