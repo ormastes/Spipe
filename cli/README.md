@@ -12,7 +12,35 @@ node cli/spipe.js doc-root ../..
 node cli/spipe.js link-plan ../..
 node cli/spipe.js doctor ../..
 node cli/spipe.js skill
+node cli/spipe.js release-guide
+node cli/spipe.js release-capabilities
+node cli/spipe.js release-version-check
+node cli/spipe.js review-request-create '<json>'
+node cli/spipe.js review-admission-validate '<json>'
 ```
+
+The release commands are read-only. `release-guide` prints the canonical
+protected-release process, `release-capabilities` prints the policy schema and
+supported planning boundaries, and `release-version-check` verifies the sole
+version authority and every declared package/plugin projection. Provider
+mutation still requires a unique session, live protected-ref authority, and
+explicit approval.
+
+The guarded operational commands each accept exactly one JSON object:
+`release-session-plan`, `release-main-fix-discovery-plan`,
+`release-beta-backport-plan`, `release-forward-port-plan`,
+`release-candidate-plan`, `release-promotion-plan`, and
+`release-withdrawal-plan`. They validate and hash evidence but never checkout,
+cherry-pick, build, tag, push, delete, overwrite, or publish.
+
+Review requests cover repo/PR/session/feature scopes and reject caller-supplied
+head SHAs. CLI admission validation is explicitly non-authoritative: it checks
+the closed receipt shape and lifetime but always returns `admitted: false` and
+ignores caller-controlled broker environment values. Authoritative validation
+belongs only to an operator-owned MCP server whose dedicated broker re-resolves
+the live head and exact check set before PASS is accepted.
+`self-review-request-plan` validates only a headless scoped request. CLI output
+is never an admission decision and cannot emit `SPipe Self Review Admission`.
 
 Fine-tune process examples:
 
@@ -23,7 +51,7 @@ node cli/spipe.js fine-tune-new-attempt demo "LLM-backed app" app
 node cli/spipe.js fine-tune-record-data demo dataset source license "download command" .spipe/cache/dataset checksum
 node cli/spipe.js fine-tune-record-model-research demo model license 8192 fit constraints selected
 node cli/spipe.js fine-tune-select-model-method demo model revision local provider-fine-tune user retry-base-model
-node cli/spipe.js fine-tune-scaffold-training demo provider-fine-tune .spipe/llm-finetune-process/scripts/train_demo.sh
+node cli/spipe.js fine-tune-scaffold-training demo provider-fine-tune .spipe/llm-finetune-process/scripts/train_demo.shs
 node cli/spipe.js fine-tune-record-verify-loop demo "eval command" "metric=1" "metric>=1" pass accepted none
 node cli/spipe.js fine-tune-report demo
 ```

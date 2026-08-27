@@ -1,8 +1,16 @@
 {
   "name": "@simple-lang/spipe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SPipe reusable LLM process module, CLI, MCP server, and plugin assets.",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ormastes/Spipe.git"
+  },
+  "homepage": "https://github.com/ormastes/Spipe",
   "bin": {
     "spipe": "cli/spipe.js",
     "spipe-mcp": "mcp/server.js"
@@ -13,7 +21,10 @@
   },
   "files": [
     "README.md",
+    "LICENSE",
+    "release/",
     "cli/",
+    "src/",
     "mcp/",
     "plugin/",
     "scripts/",

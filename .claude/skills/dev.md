@@ -37,3 +37,7 @@ the same full feature-development pipeline.
 | Research only, no implementation | `/research` |
 | Design only, implementation later | `/design` |
 | Post-implementation verification audit | `/verify` |
+
+User-authorized self-review requires an exact-head higher-model PASS with no
+P0/P1, a headless SPipe MCP policy decision, and broker-owned
+`SPipe Self Review Admission` emission only on allow.

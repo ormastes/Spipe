@@ -1,0 +1,28 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build and verify
+        shell: bash
+        run: sh scripts/build.sh
+      - name: Verify native PowerShell containment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./test/windows/setup_spipe_links_containment.ps1

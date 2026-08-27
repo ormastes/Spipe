@@ -35,3 +35,9 @@ paths should report
 Do not treat Electron or Chrome bitmaps as Vulkan proof when their logs record
 `vulkan-angle-unavailable`, and do not claim RenderDoc completion without `.rdc`
 files whose first bytes are `RDOC`.
+
+## Scoped self-review gate
+
+After an exact-head higher-model PASS with no P0/P1, evaluate the headless
+session request through SPipe MCP. On allow only, emit the pinned broker's
+`SPipe Self Review Admission` check; never submit a provider PR approval.
