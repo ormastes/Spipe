@@ -39,6 +39,8 @@ the closed receipt shape and lifetime but always returns `admitted: false` and
 ignores caller-controlled broker environment values. Authoritative validation
 belongs only to an operator-owned MCP server whose dedicated broker re-resolves
 the live head and exact check set before PASS is accepted.
+`self-review-request-plan` validates only a headless scoped request. CLI output
+is never an admission decision and cannot emit `SPipe Self Review Admission`.
 
 Fine-tune process examples:
 

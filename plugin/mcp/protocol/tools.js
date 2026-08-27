@@ -6,6 +6,10 @@ import { checkVersionAuthority } from "../../src/release/version.js";
 import { createReviewRequest, validateReviewAdmission } from "../../src/review/admission.js";
 import { configuredReviewAuthority } from "../../src/review/broker.js";
 import {
+  approveSelfReview, evaluateSelfReviewPrivilege, loadSelfReviewPolicy,
+  selfReviewRequestFields, selfReviewSchemas
+} from "../../src/review/self_review.js";
+import {
   fallbackAdmissionFields, independentAdmissionFields, reviewCapabilities,
   reviewRequestFields, reviewSchemas
 } from "../../src/review/contract.js";
@@ -34,6 +38,12 @@ function reviewProperties(fields) {
 }
 const reviewRequestSchema = Object.freeze({ type: "object", properties: reviewProperties(reviewRequestFields), required: [...reviewRequestFields], additionalProperties: false });
 const reviewAdmissionSchema = Object.freeze({ oneOf: [independentAdmissionFields, fallbackAdmissionFields].map((fields) => ({ type: "object", properties: reviewProperties(fields), required: [...fields], additionalProperties: false })) });
+const selfReviewRequestSchema = Object.freeze({
+  type: "object",
+  properties: Object.fromEntries(selfReviewRequestFields.map((field) => [field, { type: field === "pull_request" ? "integer" : "string" }])),
+  required: [...selfReviewRequestFields],
+  additionalProperties: false
+});
 
 export const tools = Object.freeze([
   { name: "spipe_info", description: "Return SPipe module paths and link surfaces.", inputSchema: { type: "object", properties: {} } },
@@ -62,7 +72,9 @@ export const tools = Object.freeze([
   { name: "spipe_release_forward_port_plan", description: "Validate an isolated main forward-port for an approved release-first fix. Never pushes a protected ref.", inputSchema: releasePlanSchema("forward-port") },
   { name: "spipe_review_request_create", description: "Create a non-mutating repo/PR/session/feature review request. Caller head SHAs are rejected; the broker resolves the head.", inputSchema: reviewRequestSchema },
   { name: "spipe_review_admission_validate", description: "Validate an exact-head, exact-check review receipt through the configured pinned broker. Unavailable without broker authority.", inputSchema: reviewAdmissionSchema },
-  { name: "spipe_review_capabilities", description: "Return review request/admission schemas and fail-closed broker capabilities.", inputSchema: { type: "object", properties: {}, additionalProperties: false } }
+  { name: "spipe_review_capabilities", description: "Return review request/admission schemas and fail-closed broker capabilities.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "spipe_self_review_privilege_evaluate", description: "Resolve the live PR head/diff and exact higher-model receipt through the pinned broker, then evaluate the operator-owned session grant DB without mutation. Caller head/diff fields are rejected.", inputSchema: selfReviewRequestSchema },
+  { name: "spipe_self_review_approve", description: "After a passing scoped evaluation, ask the configured broker identity to re-resolve and emit SPipe Self Review Admission on that exact PR head/diff. It never submits a provider PR approval.", inputSchema: selfReviewRequestSchema }
 ]);
 
 function text(content) {
@@ -131,10 +143,19 @@ export function callTool(moduleRoot, name, args = {}, options = {}) {
   if (name === "spipe_release_version_check") return text(JSON.stringify(checkVersionAuthority(moduleRoot), null, 2));
   if (name === "spipe_review_capabilities") return text([
     ...Object.entries(reviewSchemas).map(([key, value]) => `${key}=${value}`),
+    ...Object.entries(selfReviewSchemas).map(([key, value]) => `self_review_${key}=${value}`),
     ...Object.entries(reviewCapabilities).map(([key, value]) => `${key}=${value}`)
   ].join("\n"));
   if (name === "spipe_review_request_create") return text(JSON.stringify(createReviewRequest(args), null, 2));
   if (name === "spipe_review_admission_validate") return text(JSON.stringify(validateReviewAdmission(args, options.reviewAuthority || configuredReviewAuthority()), null, 2));
+  if (name === "spipe_self_review_privilege_evaluate" || name === "spipe_self_review_approve") {
+    const authority = options.reviewAuthority || configuredReviewAuthority();
+    const policy = options.selfReviewPolicy || loadSelfReviewPolicy(options.selfReviewPolicyPath || process.env.SPIPE_SELF_REVIEW_POLICY_DB);
+    const result = name === "spipe_self_review_privilege_evaluate"
+      ? evaluateSelfReviewPrivilege(args, policy, authority)
+      : approveSelfReview(args, policy, authority);
+    return text(JSON.stringify(result, null, 2));
+  }
   const releaseTools = {
     spipe_release_session_plan: "isolated-session",
     spipe_release_beta_backport_plan: "beta-backport",

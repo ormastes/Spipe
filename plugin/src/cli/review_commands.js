@@ -1,13 +1,14 @@
 import { createReviewRequest, planReviewAdmissionValidation } from "../review/admission.js";
+import { planSelfReviewRequest } from "../review/self_review.js";
 
 export function runReviewCommand(command, args) {
-  if (!["review-request-create", "review-admission-validate"].includes(command)) return { handled: false };
+  if (!["review-request-create", "review-admission-validate", "self-review-request-plan"].includes(command)) return { handled: false };
   if (args.length !== 1) throw new Error(`${command} requires exactly one JSON object argument`);
   let input;
   try { input = JSON.parse(args[0]); } catch { throw new Error(`${command} input must be valid JSON`); }
-  const result = command === "review-request-create"
-    ? createReviewRequest(input)
-    : planReviewAdmissionValidation(input);
+  const result = command === "review-request-create" ? createReviewRequest(input)
+    : command === "review-admission-validate" ? planReviewAdmissionValidation(input)
+    : planSelfReviewRequest(input);
   console.log(JSON.stringify(result, null, 2));
   return { handled: true };
 }

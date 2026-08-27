@@ -24,6 +24,8 @@ Tools:
 - `spipe_review_request_create`
 - `spipe_review_admission_validate`
 - `spipe_review_capabilities`
+- `spipe_self_review_privilege_evaluate`
+- `spipe_self_review_approve`
 
 The release tools are read-only inspection surfaces. They report the packaged
 policy and schema capabilities; they do not grant authority to update a
@@ -43,6 +45,16 @@ The MCP process and its broker environment must be launched and owned by the
 operator; exposing broker command or integration-ID environment configuration
 to request callers invalidates this trust boundary. The CLI never consumes
 those environment values as admission authority.
+
+Scoped self-review also requires an operator-owned JSONL DB configured by the
+MCP process as `SPIPE_SELF_REVIEW_POLICY_DB`. Callers cannot supply a head or
+diff. The approval-named tool emits the exact-head `SPipe Self Review Admission`
+check through the pinned broker; it never submits a provider PR approval. The
+broker must bind the session/request and base repository/ref/SHA, merge base,
+and diff digest on both resolution and admission re-resolution. It must also
+prove the exact target repository/ref is protected by the same provider
+ruleset with strict up-to-date required-status enforcement. Missing proof,
+retargeting, ruleset replacement, or base movement fails closed.
 
 Resource:
 

@@ -73,6 +73,12 @@ by a configured dedicated broker whose integration ID is pinned by the server.
 See `doc/00_llm_process/spipe/review_admission.md` for the receipt and trust
 boundary. Neither command replaces release or npm environment approvals.
 
+Scoped self-review defaults to eligible for ordinary reviewed code/text, then
+applies operator-owned JSONL deny/constrain policy and fixed secret/authority-DB
+restrictions. Every decision requires an authenticated exact-head higher-model
+PASS with no P0/P1 findings. A pinned broker emits `SPipe Self Review Admission`
+on that SHA; it never attempts an author's provider PR approval.
+
 The CLI also owns the reusable LLM fine-tune process. It can initialize host
 attempt registries, record data downloads, model research, base-model choice,
 tuning method, training script, eval results, retry decisions, and app/server

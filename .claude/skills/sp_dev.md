@@ -23,3 +23,7 @@ Argument: `$ARGUMENTS`
 Read `.claude/skills/sstack.md` and execute its full orchestrator procedure
 with the user request. There are no behavioral differences between `/sp_dev`,
 `/dev`, and `/sstack`.
+
+User-authorized self-review requires an exact-head higher-model PASS with no
+P0/P1, evaluation without caller head/diff, and broker-owned
+`SPipe Self Review Admission` emission only on allow.

@@ -6,6 +6,7 @@ import { releaseCapabilities, releaseContractHash, releaseSchemas } from "../src
 import { runReleaseCommand } from "../src/cli/release_commands.js";
 import { runReviewCommand } from "../src/cli/review_commands.js";
 import { reviewCapabilities, reviewSchemas } from "../src/review/contract.js";
+import { selfReviewSchemas } from "../src/review/self_review.js";
 import { canonicalVersion, checkVersionAuthority } from "../src/release/version.js";
 
 const moduleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,6 +45,8 @@ Commands:
   review-admission-validate <json>
                        Validate receipt shape/time only; CLI never authorizes admission.
   review-capabilities  Print review request/admission schemas and capabilities.
+  self-review-request-plan <json>
+                       Plan a scoped self-review request; never trusts a caller head or approves a PR.
   fine-tune-guide      Print the LLM fine-tune process guide.
   fine-tune-model-guide
                        Print the LLM base-model research guide.
@@ -1547,6 +1550,7 @@ switch (command) {
     break;
   case "review-capabilities":
     for (const [name, value] of Object.entries(reviewSchemas)) console.log(`schema.${name}=${value}`);
+    for (const [name, value] of Object.entries(selfReviewSchemas)) console.log(`schema.self_review_${name}=${value}`);
     for (const [name, value] of Object.entries(reviewCapabilities)) console.log(`capability.${name}=${value}`);
     break;
   case "release-session-plan":
@@ -1565,6 +1569,7 @@ switch (command) {
     break;
   case "review-request-create":
   case "review-admission-validate":
+  case "self-review-request-plan":
     try {
       runReviewCommand(command, args);
     } catch (error) {
