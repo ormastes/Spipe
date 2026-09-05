@@ -258,9 +258,25 @@ file*, not in the specs.
    **exist on disk**. `ls` it before writing it. A fabricated path costs more
    than the omission it was meant to fix.
 3. `SSDOC-ORA-003` (−10 ora = −2 each, cap −30) — every numeric expected literal
-   needs `# oracle:` or `# explained:` **on the same line**:
-   `expect(total).to_equal(4)  # oracle: the plan lists four groups`.
-   The marker excuses ORA-003 only — it does **not** excuse an ORA-002 tautology.
+   needs a `# oracle:` or `# explained:` marker **as a TRAILING comment on the
+   very same line as the `expect(...)` call**. This is the single most-repeated
+   worker mistake — two separate workers put the marker on its own line, saw the
+   finding survive, and concluded the scorer "does not recognise `# oracle:`
+   comments" and that 90 was unreachable. It does; the placement was wrong.
+
+   ```simple
+   # WRONG — own line. ORA-003 still fires.
+   # oracle: the plan lists four groups
+   expect(total).to_equal(4)
+
+   # RIGHT — trailing, same line.
+   expect(total).to_equal(4)  # oracle: the plan lists four groups
+   ```
+
+   The scorer matches per line, so a marker on the preceding line is invisible to
+   it. If ORA-003 survives your edit, check placement before concluding anything
+   about the scorer. The marker excuses ORA-003 only — it does **not** excuse an
+   ORA-002 tautology.
 4. `SSDOC-EVD-001` (−10 evd **per stepped scenario**, cap −30) — each scenario
    with a `step(` needs a capture in its body. Use the literal form
    `# @capture(<kind>): <what is retained>` (kinds: `tui_grid`, `gui_image`,
