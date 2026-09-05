@@ -7,7 +7,7 @@
 
 | File | Purpose |
 |------|---------|
-| [`skill.md`](skill.md) | Test-writing skill: BDD syntax, matchers, file structure, doc generation |
+| [`skill.md`](skill.md) | Test-writing skill: BDD syntax, matchers, file structure, doc generation, modern-sspec score ≥90 checklist |
 | [`loop.md`](loop.md) | Continuous check-and-implement loop (`/spipe_loop`) |
 | [`guide.md`](guide.md) | Pointer to the canonical testing guide at `doc/07_guide/testing/testing.md` |
 | [`lint_rules.md`](lint_rules.md) | Lint-rules design doc (relocated from `doc/05_design/`) |
