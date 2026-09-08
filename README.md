@@ -130,6 +130,26 @@ index entries as gitlinks. In the Simple host, run:
 sh scripts/check-spipe-submodule-gitlinks.shs --check
 ```
 
+## Local knowledge ownership
+
+SPipe supports common, organization, and project knowledge without copying
+owner-controlled repositories. For first-user setup run:
+
+```sh
+sh scripts/setup-local-knowledge.sh --mode user
+```
+
+After cloning a host project, use its bootstrap entrypoint:
+
+```sh
+sh scripts/setup-spipe-local.shs
+```
+
+PowerShell equivalents are `scripts/setup-local-knowledge.ps1` in the common
+checkout and `scripts/setup-spipe-local.ps1` in a host project.
+
+See `doc/00_llm_process/knowledge/index.md` for ownership and update rules.
+
 ## Host Setup
 
 From a host repository with this project mounted at `.spipe/spipe`:
