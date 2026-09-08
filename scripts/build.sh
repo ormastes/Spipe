@@ -22,6 +22,9 @@ doc/00_llm_process/project_expert
 doc/00_llm_process/project_expert/subproject_links.example.sdn
 doc/00_llm_process/domain_expert
 doc/00_llm_process/tool_expert
+doc/00_llm_process/knowledge/index.md
+doc/00_llm_process/knowledge/local_ownership_setup.md
+doc/00_llm_process/skill_command/skills/pipe/knowledge_ownership/skill.md
 .claude/skills/spipe.md
 .claude/skills/software-release.md
 .claude/skills/release.md
@@ -101,6 +104,8 @@ scripts/project-self-review-guidance.js
 plugin
 mcp
 cli
+scripts/setup-local-knowledge.sh
+scripts/setup-local-knowledge.ps1
 "
 
 missing=0
@@ -221,7 +226,28 @@ MINGW*|MSYS*|CYGWIN*) ;;
 *)
 tmp_link_host="$(mktemp -d)"
 tmp_link_outside="$(mktemp -d)"
-trap 'rm -rf "$tmp_host" "$tmp_link_host" "$tmp_link_outside"' EXIT
+tmp_common="$(mktemp -d)"
+tmp_user_parent="$(mktemp -d)"
+trap 'rm -rf "$tmp_host" "$tmp_link_host" "$tmp_link_outside" "$tmp_common" "$tmp_user_parent"' EXIT
+
+git -C "$tmp_common" init -q
+git -C "$tmp_common" config user.name "SPipe Build"
+git -C "$tmp_common" config user.email "spipe-build@example.invalid"
+printf 'fixture\n' > "$tmp_common/README.md"
+git -C "$tmp_common" add README.md
+git -C "$tmp_common" commit -qm fixture
+GIT_ALLOW_PROTOCOL=file sh scripts/setup-local-knowledge.sh \
+  --mode user --destination "$tmp_user_parent/.spipe" \
+  --common-url "$tmp_common" --organization fixture-org \
+  --project fixture-project --yes >/dev/null
+test "$(git -C "$tmp_user_parent/.spipe" ls-files --stage -- .spipe | awk '{print $1}')" = 160000
+grep -Fq 'organization:fixture-org|' "$tmp_user_parent/.spipe/local/scopes.sdn"
+grep -Fq 'project:fixture-project|' "$tmp_user_parent/.spipe/local/scopes.sdn"
+GIT_ALLOW_PROTOCOL=file sh scripts/setup-local-knowledge.sh \
+  --mode user --destination "$tmp_user_parent/.spipe" \
+  --common-url "$tmp_common" --organization fixture-org \
+  --project fixture-project --yes >/dev/null
+test "$(grep -Fc 'project:fixture-project|' "$tmp_user_parent/.spipe/local/scopes.sdn")" = 1
 SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run | grep -q "doc/llm_process/spipe"
 test ! -e "$tmp_link_host/doc"
 if SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run --force --doc-root ../escape >/dev/null 2>&1; then
