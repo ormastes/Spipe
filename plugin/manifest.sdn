@@ -53,4 +53,8 @@ plugin:
     structured_self_review_rejection_guidance: true
     scope_aware_research_skill: true
     scope_aware_resolver_api: false
+    shared_common_locator_api: false
+    common_locator_script: true
+    intranet_distribution_api: false
+    runtime_retention_guidance: true
     runtime_is_canonical_knowledge: false

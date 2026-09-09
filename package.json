@@ -28,6 +28,8 @@
     "mcp/",
     "plugin/",
     "scripts/",
+    "wiki/",
+    "docs/",
     "doc/",
     ".claude/",
     ".codex/",
