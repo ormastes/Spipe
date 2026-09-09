@@ -28,13 +28,20 @@ function projectCandidates(start) {
 
 const home = homedir();
 const candidates = [];
-if (process.env.SPIPE_HOME) candidates.push(process.env.SPIPE_HOME);
+if (process.env.SPIPE_HOME) {
+  if (!isSpipeRoot(resolve(process.env.SPIPE_HOME))) {
+    console.error(`SPIPE_HOME is not an identified SPipe package: ${process.env.SPIPE_HOME}`);
+    process.exit(2);
+  }
+  candidates.push(process.env.SPIPE_HOME);
+}
 candidates.push(...projectCandidates(process.cwd()));
 candidates.push(join(home, "spipe"));
 candidates.push(join(home, ".spipe", "common"));
 candidates.push(process.cwd());
 
 for (let current = resolve(process.cwd()); ; current = dirname(current)) {
+  candidates.push(join(current, ".spipe"));
   candidates.push(join(current, ".spipe", "spipe"));
   candidates.push(join(current, ".spipe", "spipe_project"));
   if (dirname(current) === current) break;

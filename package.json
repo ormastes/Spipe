@@ -29,6 +29,8 @@
     "plugin/",
     "scripts/",
     "wiki/",
+    "raw/",
+    "skills/",
     "docs/",
     "doc/",
     ".claude/",

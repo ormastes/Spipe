@@ -1,7 +1,7 @@
 # SPipe intranet mirror and global discovery design
 
-Status: proposed shared implementation and reference-script contract. This
-documentation change does not ship `find-spipe.mjs`, `install-spipe.mjs`, or
+Status: partial shared implementation and reference-script contract.
+`find-spipe.mjs` is shipped. This change does not ship `install-spipe.mjs` or
 `sync-spipe-mirror.mjs`, provision a server, or synchronize any remote.
 
 ## Common and private workspace

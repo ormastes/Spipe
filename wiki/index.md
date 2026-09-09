@@ -18,7 +18,9 @@ project's reviewed common requirement before selecting content.
 
 `raw/` preserves evidence; `wiki/` synthesizes knowledge; `doc/` holds canonical
 lifecycle decisions and specifications; `skills/` defines agent procedures.
-Keep evidence provenance and applicability when composing scopes.
+Keep evidence provenance and applicability when composing scopes. Start from
+the [common skills index](../skills/index.md) so Claude, Codex, Gemini, and MCP
+adapters use the same discovery and research contract.
 
 ## Routes
 
@@ -26,6 +28,10 @@ Keep evidence provenance and applicability when composing scopes.
 - [Local setup](../doc/00_llm_process/knowledge/local_ownership_setup.md) — available setup and planned workspace layout.
 - [Migration](../doc/00_llm_process/knowledge/local_migration.md) — classify legacy content and preserve pins.
 - [Research procedure](../plugin/skills/spipe-research/SKILL.md) — agent research workflow.
+- [Raw evidence](../raw/index.md) — provenance and source-material contract.
+- [Common skills](../skills/index.md) — bootstrap, compatibility, and agent routes.
+- [Dated workspace research](../doc/00_llm_process/knowledge/research/spipe_workspace_ownership_llm_wiki_2026-09-09.md)
+  — ownership-aware workspace and LLM-wiki design.
 
 `doc/00_llm_process/knowledge/` remains normative documentation about the
 knowledge system. Its contents are classified individually before any migration.

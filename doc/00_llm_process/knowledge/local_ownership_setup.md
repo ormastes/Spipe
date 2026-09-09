@@ -8,13 +8,14 @@ outer repository is user-owned; its `.spipe` child is the pinned common SPipe
 submodule. `organization/` and `projects/` contain user-owned registrations or
 content, while `local/` is ignored machine state.
 
-After cloning a Simple host project, run its `scripts/setup-spipe-local.shs`. It initializes the
-recorded `.spipe` gitlink without changing its pin. Legacy `.spipe/spipe`
-layouts are supported and preserved until an explicit migration is reviewed.
+After cloning a Simple host project, run its `scripts/setup-spipe-local.shs`. It
+prefers `.spipe/common` routed to canonical `~/spipe`. Recorded `.spipe/spipe`
+layouts remain supported fallbacks until an explicit migration is reviewed.
 On Windows, use `scripts/setup-spipe-local.ps1`; first-user setup uses the
 common checkout's `scripts/setup-local-knowledge.ps1`.
 
-These existing scripts retain their legacy layout and registry formats. The
+The setup scripts now accept the external common route while retaining legacy
+registry formats. The
 workspace schema, distribution scripts, and migration executor described below
 are integration targets. A supplied reference package's test results do not
 establish that those capabilities are released in this checkout.
@@ -29,8 +30,7 @@ resolved explicitly; installing a global checkout does not upgrade a project.
 
 Simple's preferred project route is `<simple>/.spipe/common`, pointing or resolving
 to `~/spipe`. `.spipe/spipe` and `.spipe/spipe_project` follow as legacy compatibility
-candidates. Activating the new route is a separate host integration change that
-must validate Simple's reviewed common requirement. A mismatched global checkout
+candidates. A mismatched global checkout
 produces a version diagnostic; it cannot silently replace a recorded dependency.
 
 ```text

@@ -84,7 +84,7 @@ else
     echo "setup-local-knowledge: project destination is not a Git checkout" >&2; exit 3
   fi
   if [ -f "$DESTINATION/.spipe/common/package.json" ] &&
-     grep -Fq '"name": "@simple-lang/spipe"' "$DESTINATION/.spipe/common/package.json"; then
+     grep -Eq '"name"[[:space:]]*:[[:space:]]*"@simple-lang/spipe"' "$DESTINATION/.spipe/common/package.json"; then
     echo "common_layout=.spipe/common (external canonical checkout)"
   elif git -C "$DESTINATION" ls-files --stage -- .spipe | grep -q '^160000 '; then
     git -C "$DESTINATION" submodule update --init -- .spipe
