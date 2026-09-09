@@ -30,3 +30,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./test/windows/setup_local_knowledge_external_common.ps1
+      - name: Verify SPipe common discovery
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./test/windows/find_spipe_discovery.ps1

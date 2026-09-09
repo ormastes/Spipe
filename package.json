@@ -17,7 +17,7 @@
   },
   "scripts": {
     "build": "sh scripts/build.sh",
-    "check": "node --check cli/spipe.js && node --check mcp/server.js"
+    "check": "node --check cli/spipe.js && node --check mcp/server.js && node --check scripts/distribution-common.mjs && node --check scripts/find-spipe.mjs && node --check scripts/install-spipe.mjs && node --check scripts/setup-spipe-workspace.mjs && node --check scripts/sync-spipe-mirror.mjs"
   },
   "files": [
     "README.md",

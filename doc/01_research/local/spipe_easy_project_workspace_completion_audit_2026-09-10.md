@@ -54,3 +54,19 @@ Add installer and dedicated mirror flows with explicit plan/apply boundaries.
 Integrate every harness and CLI/MCP consumer, then classify/migrate knowledge
 through one reviewed writer. Complete native OS and authorized-context parity
 checks before replacing the partial-status language with completion claims.
+
+## Implementation follow-up on this branch
+
+After the remote-main audit above, this branch added the missing portable
+locator-facing distribution layer: dependency-free Node workspace bootstrap,
+interactive first-user/project setup, Internet/mirror/auto installer, dedicated
+mirror synchronization, project-route pin preservation, common/doc indexes, and
+Claude/Codex/Gemini bootstrap projections. Focused local fixtures cover plan-only
+operation, explicit apply, idempotence, conflicts, exact pins, dirty/divergent
+refusal, project non-mutation, runtime scaffolds, interactive routing, and
+fail-closed discovery.
+
+This follow-up closes the easy-user bootstrap/distribution gaps in the matrix;
+it does not claim enterprise authorization, canonical document migration,
+runtime KV reuse, or native Windows/macOS deployment. Those remain separate
+architecture work rather than hidden behavior in an installation script.

@@ -38,9 +38,10 @@ See [agent/bootstrap guidance](../docs/PLUGIN_AGENT_BOOTSTRAP.md) and
 [distribution design](../docs/INTRANET_MIRROR_AND_DISCOVERY.md). Shared
 `locate_common`, `resolve_workspace`, `resolve_active_scopes`,
 `compile_research_context`, and `explain_resolution` APIs remain an integration
-target until corresponding exports exist. `find-spipe.mjs` is shipped; the
-`install-spipe.mjs` and `sync-spipe-mirror.mjs` entrypoints remain proposed.
-Plugin installation alone
+target until corresponding exports exist. The shared locator, workspace
+bootstrap, installer, and dedicated-mirror entrypoints are shipped under
+`scripts/`; each mutating distribution workflow plans by default and requires
+explicit apply. Plugin installation alone
 does not establish a trusted scope resolver.
 
 The canonical version is projected from `../release/version.sdn`. The plugin

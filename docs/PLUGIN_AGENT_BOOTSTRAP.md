@@ -1,8 +1,8 @@
 # Agent and plugin SPipe bootstrap guide
 
-Status: partial implementation contract. The plugin ships research guidance and
-`scripts/find-spipe.mjs`; shared context exports and install/mirror scripts still
-require implementation.
+Status: the plugin ships research guidance plus portable locator, workspace,
+install, and mirror scripts. Shared authorization-aware context exports remain
+an integration target.
 
 ## Common discovery
 

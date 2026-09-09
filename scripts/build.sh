@@ -48,6 +48,11 @@ doc/00_llm_process/skill_command/skills/pipe/knowledge_ownership/skill.md
 package.json
 cli/spipe.js
 mcp/server.js
+scripts/distribution-common.mjs
+scripts/find-spipe.mjs
+scripts/install-spipe.mjs
+scripts/setup-spipe-workspace.mjs
+scripts/sync-spipe-mirror.mjs
 src/release/contract.js
 src/release/planner.js
 src/release/session.js
@@ -63,6 +68,9 @@ test/unit/release_session_test.js
 test/unit/review_admission_test.js
 test/unit/self_review_policy_test.js
 test/unit/self_review_guidance_test.js
+test/unit/find_spipe_test.js
+test/unit/workspace_distribution_test.mjs
+test/windows/find_spipe_discovery.ps1
 test/windows/setup_spipe_links_containment.ps1
 plugin/.codex-plugin/plugin.json
 plugin/package.json
@@ -218,6 +226,8 @@ node --test test/unit/release_session_test.js
 node --test test/unit/review_admission_test.js
 node --test test/unit/self_review_policy_test.js
 node --test test/unit/self_review_guidance_test.js
+node --test test/unit/find_spipe_test.js
+node --test test/unit/workspace_distribution_test.mjs
 
 tmp_host="$(mktemp -d)"
 trap 'rm -rf "$tmp_host"' EXIT
