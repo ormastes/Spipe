@@ -38,7 +38,8 @@ export function workspaceSetup(options) {
   let projectPath;
   if (project) {
     projectPath = realpathSync(pathValue(options['project-path']));
-    if (within(root, projectPath) || within(projectPath, root) || realpathSync(git(projectPath, ['rev-parse', '--show-toplevel'])) !== projectPath) throw Error('Project must be an external Git worktree root');
+    git(projectPath, ['rev-parse', '--show-toplevel']);
+    if (within(root, projectPath) || within(projectPath, root) || git(projectPath, ['rev-parse', '--show-prefix'])) throw Error('Project must be an external Git worktree root');
   }
   const manifestPath = managed(root, 'workspace.json');
   const oldManifest = present(manifestPath) ? json(manifestPath) : null;

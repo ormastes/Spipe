@@ -51,11 +51,14 @@ export function isPackage(root) {
 }
 export function cleanPackage(root) {
   if (!isPackage(root)) throw Error(`Not an identified SPipe package: ${root}`);
-  if (realpathSync(git(root, ['rev-parse', '--show-toplevel'])) !== realpathSync(root)) throw Error('Common must be a Git worktree root');
+  git(root, ['rev-parse', '--show-toplevel']);
+  if (git(root, ['rev-parse', '--show-prefix'])) throw Error('Common must be a Git worktree root');
   if (git(root, ['status', '--porcelain', '--untracked-files=all'])) throw Error(`Common checkout is dirty: ${root}`);
   const head = git(root, ['rev-parse', 'HEAD']);
   const parent = git(root, ['rev-parse', '--show-superproject-working-tree']);
-  if (parent && !git(parent, ['ls-files', '--stage', '--', relative(realpathSync(parent), realpathSync(root))]).startsWith(`160000 ${head} 0\t`)) throw Error('Common checkout differs from its recorded project gitlink');
+  const gitRoot = git(root, ['rev-parse', '--show-toplevel']);
+  const gitlink = parent ? relative(parent, gitRoot).split('\\').join('/') : '';
+  if (parent && !git(parent, ['ls-files', '--stage', '--', gitlink]).startsWith(`160000 ${head} 0\t`)) throw Error('Common checkout differs from its recorded project gitlink');
   return head;
 }
 export function source(value, localAllowed = false) {
