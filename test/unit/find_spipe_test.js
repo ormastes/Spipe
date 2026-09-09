@@ -80,10 +80,11 @@ test("agent guide exposes the common wiki, skills, guides, and compatibility kno
     const common = root(join(base, "common"), true);
     const result = run(base, join(base, "home"), { SPIPE_HOME: common }, ["--agent-guide"]);
     assert.equal(result.status, 0);
+    const output = result.stdout.replaceAll("\\", "/");
     for (const path of ["wiki/index.md", "skills/index.md",
       "plugin/skills/spipe-research/SKILL.md", "docs/PLUGIN_AGENT_BOOTSTRAP.md",
       "doc/00_llm_process/knowledge/index.md", "doc/00_llm_process/skill_command/skills"]) {
-      assert.match(result.stdout, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.match(output, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
