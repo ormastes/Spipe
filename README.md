@@ -132,21 +132,38 @@ sh scripts/check-spipe-submodule-gitlinks.shs --check
 
 ## Local knowledge ownership
 
-SPipe supports common, organization, and project knowledge without copying
-owner-controlled repositories. For first-user setup run:
+SPipe supports common, company, organization, project, user, and host knowledge
+without copying owner-controlled repositories. Plan a first-user workspace
+interactively, then review and apply the same choices:
 
 ```sh
-sh scripts/setup-local-knowledge.sh --mode user
+node scripts/setup-spipe-workspace.mjs init --interactive
+node scripts/setup-spipe-workspace.mjs init --interactive --apply
 ```
 
-After cloning a host project, use its bootstrap entrypoint:
+The default common checkout is `~/spipe`; private workspace state is under
+`~/.spipe`, with `~/.spipe/common` routing to the common checkout. Install or
+update common using an approved Internet or intranet source (plan first):
 
 ```sh
-sh scripts/setup-spipe-local.shs
+node scripts/install-spipe.mjs --source auto
+node scripts/install-spipe.mjs --source auto --apply
 ```
 
-PowerShell equivalents are `scripts/setup-local-knowledge.ps1` in the common
-checkout and `scripts/setup-spipe-local.ps1` in a host project.
+After cloning an ordinary project, register its existing Git root without
+copying or modifying it:
+
+```sh
+node scripts/setup-spipe-workspace.mjs init --interactive \
+  --project my-project --project-path /path/to/my-project
+```
+
+Set `SPIPE_HOME` for an explicit common checkout. Otherwise discovery checks a
+project `.spipe/common`, compatibility `.spipe/spipe` mounts, `~/spipe`, then
+`~/.spipe/common`. Existing legacy setup scripts remain compatibility adapters.
+For a dedicated intranet mirror, see
+`docs/INTRANET_MIRROR_AND_DISCOVERY.md`; mirror publication always requires an
+explicit reviewed apply operation.
 
 See `doc/00_llm_process/knowledge/index.md` for ownership and update rules.
 

@@ -19,6 +19,9 @@ function projectCandidates(start) {
   let current = resolve(start);
   while (true) {
     found.push(join(current, ".spipe", "common"));
+    found.push(join(current, ".spipe", "spipe"));
+    found.push(join(current, ".spipe", "spipe_project"));
+    found.push(join(current, ".spipe"));
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
@@ -39,13 +42,6 @@ candidates.push(...projectCandidates(process.cwd()));
 candidates.push(join(home, "spipe"));
 candidates.push(join(home, ".spipe", "common"));
 candidates.push(process.cwd());
-
-for (let current = resolve(process.cwd()); ; current = dirname(current)) {
-  candidates.push(join(current, ".spipe"));
-  candidates.push(join(current, ".spipe", "spipe"));
-  candidates.push(join(current, ".spipe", "spipe_project"));
-  if (dirname(current) === current) break;
-}
 candidates.push(join(home, ".spipe"));
 
 const seen = new Set();
@@ -68,10 +64,17 @@ if (!root) {
 if (process.argv.includes("--agent-guide")) {
   console.log(`SPIPE_HOME=${root}`);
   for (const relative of [
+    "README.md",
+    "index.md",
+    "wiki/index.md",
+    "skills/index.md",
     "plugin/skills/spipe-research/SKILL.md",
+    "docs/PLUGIN_AGENT_BOOTSTRAP.md",
+    "docs/INTRANET_MIRROR_AND_DISCOVERY.md",
+    "doc/00_llm_process/knowledge/index.md",
     "doc/00_llm_process/knowledge/local_ownership_setup.md",
     "doc/00_llm_process/knowledge/llm_wiki_scope_resolution.md",
-    "wiki/index.md",
+    "doc/00_llm_process/skill_command/skills",
   ]) {
     const path = join(root, relative);
     if (existsSync(path)) console.log(path);

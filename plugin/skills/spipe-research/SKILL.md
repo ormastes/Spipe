@@ -7,15 +7,21 @@ description: Research through authorized SPipe common, company, organization, pr
 
 ## Resolve common and active scopes
 
-Use the shared locator when available. `~/spipe` is the canonical common
-checkout; Simple uses project-owned `.spipe/common` to route to it. Resolve
-`SPIPE_HOME`, project `.spipe/common`, `~/spipe`, `~/.spipe/common`, then an
-identified direct SPipe checkout. Existing `.spipe/spipe`,
-`.spipe/spipe_project`, and legacy `~/.spipe` package roots are migration
-fallbacks. Validate package identity and project revision requirements; an
+Use the shared locator when available. `~/spipe` is the canonical global common
+checkout; Simple can route project-owned `.spipe/common` to it. Resolve
+`SPIPE_HOME`, then the nearest project `.spipe/common`, `.spipe/spipe`,
+`.spipe/spipe_project`, or identified `.spipe` before `~/spipe`,
+`~/.spipe/common`, an identified direct checkout, and the legacy home package.
+Validate package identity and project revision requirements; an
 incompatible requirement needs an explicit diagnostic and retained approved
 legacy route, not a silent pin upgrade. Do not scan arbitrary home-directory
 trees or silently skip an invalid explicit selection.
+
+Bootstrap with `node scripts/find-spipe.mjs --agent-guide` from the identified
+common package and read the existing paths it prints. Those paths expose the
+common wiki and skills indexes, this canonical research skill, setup guides,
+and compatibility knowledge routes. Adapters must consume this output instead
+of independently guessing a different common root.
 
 If common cannot be resolved, stop research and show Internet installation,
 intranet-mirror installation, and Simple's project route to common (or approved

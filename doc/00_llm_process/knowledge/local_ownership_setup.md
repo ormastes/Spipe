@@ -2,11 +2,11 @@
 
 ## Available setup
 
-For a first user repository, run `scripts/setup-local-knowledge.sh --mode user`
-from common. The
-outer repository is user-owned; its `.spipe` child is the pinned common SPipe
-submodule. `organization/` and `projects/` contain user-owned registrations or
-content, while `local/` is ignored machine state.
+For a first user workspace, run `node scripts/setup-spipe-workspace.mjs init
+--interactive` from common. It prints a plan without writing; repeat with
+`--apply` after review. The default layout keeps common at `~/spipe` and private
+company, organization, project-registration, user, host, and runtime state under
+`~/.spipe`.
 
 After cloning a Simple host project, run its `scripts/setup-spipe-local.shs`. It
 prefers `.spipe/common` routed to canonical `~/spipe`. Recorded `.spipe/spipe`
@@ -14,11 +14,10 @@ layouts remain supported fallbacks until an explicit migration is reviewed.
 On Windows, use `scripts/setup-spipe-local.ps1`; first-user setup uses the
 common checkout's `scripts/setup-local-knowledge.ps1`.
 
-The setup scripts now accept the external common route while retaining legacy
-registry formats. The
-workspace schema, distribution scripts, and migration executor described below
-are integration targets. A supplied reference package's test results do not
-establish that those capabilities are released in this checkout.
+The portable Node bootstrap and distribution scripts accept external common
+routes while retaining verified legacy pins. They scaffold schema-2 workspace
+state and registrations; enterprise authorization and transactional document
+migration remain separate integration work.
 
 ## Workspace revision target
 
@@ -70,11 +69,11 @@ trees. See [scope resolution](llm_wiki_scope_resolution.md).
 
 ## Acquisition and compatibility
 
-The design supports Internet installation, an approved intranet mirror, and
+The shipped scripts support Internet installation, an approved intranet mirror, and
 direct use through Simple's `.spipe/common` route, with recorded legacy dependencies
-retained during transition. New distribution entrypoints
-such as `install-spipe.mjs` and `sync-spipe-mirror.mjs` remain proposed until
-implemented and verified. Mirror publication is a separate authorized operation;
+retained during transition. `install-spipe.mjs` and `sync-spipe-mirror.mjs`
+plan by default and require `--apply`; mirror publication additionally requires
+`--dedicated`. Mirror publication is a separate authorized operation;
 mirror ref synchronization can delete destination refs and requires a dedicated
 mirror repository. Developer updates must preserve dirty worktrees and use only
 approved fast-forward global updates. Ordinary project setup uses the gitlink's

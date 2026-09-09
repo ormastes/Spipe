@@ -1,8 +1,8 @@
 # Agent and plugin SPipe bootstrap guide
 
-Status: partial implementation contract. The plugin ships research guidance and
-`scripts/find-spipe.mjs`; shared context exports and install/mirror scripts still
-require implementation.
+Status: the SPipe package ships portable locator, workspace, install, and mirror
+scripts; plugin guidance invokes the package locator. Shared
+authorization-aware context exports remain an integration target.
 
 ## Common discovery
 
@@ -11,11 +11,12 @@ One locator serves CLI, MCP, plugin, Claude, Codex, Gemini, and research workers
 ```text
 SPIPE_HOME
 → project .spipe/common (route to ~/spipe)
+→ project .spipe/spipe
+→ project .spipe/spipe_project
+→ project .spipe when it is itself common
 → ~/spipe
 → ~/.spipe/common
 → identified direct SPipe checkout
-→ legacy project .spipe/spipe
-→ legacy project .spipe/spipe_project
 → legacy ~/.spipe package checkout
 ```
 

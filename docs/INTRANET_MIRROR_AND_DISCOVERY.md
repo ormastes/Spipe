@@ -1,8 +1,8 @@
 # SPipe intranet mirror and global discovery design
 
-Status: partial shared implementation and reference-script contract.
-`find-spipe.mjs` is shipped. This change does not ship `install-spipe.mjs` or
-`sync-spipe-mirror.mjs`, provision a server, or synchronize any remote.
+Status: portable locator, installer, workspace bootstrap, and mirror publisher
+are shipped. They do not provision hosted repositories, supply credentials, or
+grant access to private scopes.
 
 ## Common and private workspace
 
@@ -31,7 +31,7 @@ Ordinary pinned bootstrap uses checkout-style submodule initialization, without
 new global clone is needed when canonical common already exists. A retained
 legacy project pin can serve compatibility during reviewed migration.
 
-The future global updater accepts `--source mirror|internet|auto`. Mirror mode
+The global updater accepts `--source mirror|internet|auto`. Mirror mode
 uses only the mirror; Internet mode uses only upstream; auto prefers mirror and
 permits public fallback only under the configured network/export policy. An
 existing checkout must identify as SPipe, be clean, use the configured branch,
@@ -39,7 +39,7 @@ and accept a fast-forward. A project dependency is never upgraded by this flow.
 
 ## Distribution configuration
 
-The proposed `config.sdn` lookup order is explicit `--config`, `SPIPE_CONFIG`,
+The `config.sdn` lookup order is explicit `--config`, `SPIPE_CONFIG`,
 `config.sdn` in the current identified SPipe checkout, then
 `~/.spipe/config.sdn`. Fields are `spipe.upstream`, `spipe.mirror`,
 `spipe.branch`, `spipe.checkout`, and `spipe.workspace`. Define and test the
@@ -55,8 +55,8 @@ as the dedicated bare mirror before refresh/prune. SSH/HTTPS hosting must first
 provision its repository through the service's administrative workflow.
 
 The proposed publisher stages an upstream bare mirror and synchronizes mirror
-refs. Mirror updates can delete destination refs; use a dedicated destination,
-provide a dry-run/ref plan, and validate the exact configured source/destination
+refs. Mirror updates can delete destination refs; use a dedicated destination.
+The publisher provides a default dry-run/ref plan and validates the configured source/destination
 before applying it. Do not use a repository containing human-authored branches.
 Publisher credentials are distinct from ordinary developer read credentials.
 No credentials are stored in SDN or in clone URLs.
@@ -65,9 +65,9 @@ No credentials are stored in SDN or in clone URLs.
 
 Use the canonical order and failure behavior in
 [Plugin/agent bootstrap](PLUGIN_AGENT_BOOTSTRAP.md): explicit `SPIPE_HOME`,
-project `.spipe/common`, `~/spipe`, `~/.spipe/common`, an identified
-direct package, then legacy project `.spipe/spipe`, `.spipe/spipe_project`, or
-legacy `~/.spipe` package roots. Fail explicitly
+nearest project `.spipe/common`, `.spipe/spipe`, `.spipe/spipe_project`, or
+identified `.spipe`, then `~/spipe`, `~/.spipe/common`, an identified direct
+package, and legacy `~/.spipe` package roots. Fail explicitly
 for invalid required selections or missing common. Discovery and mirror origin
 confer no private-scope authorization.
 
@@ -77,7 +77,8 @@ and follow raw/doc references as needed. Runtime retention separates rebuildable
 `cache/`, retained `state/`, active `run/`, and bounded `tmp/`; runtime is not
 mirrored as common knowledge.
 
-Implement this through one shared locator/distribution library with thin script,
-CLI, MCP and plugin adapters. Test canonical-common routing, legacy pin preservation, incompatible override
-diagnostics, direct/global parity, missing mirror behavior, fast-forward refusal,
-and dry-run non-mutation before advertising commands as available.
+The scripts share one distribution helper. CLI/MCP context compilation remains
+the next integration layer. Local fixtures cover canonical-common routing,
+legacy pin preservation, incompatible override diagnostics, missing mirrors,
+fast-forward refusal, and dry-run non-mutation; native Windows and authenticated
+hosted-mirror validation remain required before claiming those deployments.
