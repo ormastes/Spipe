@@ -18,10 +18,10 @@ knowledge.
 
 `~/spipe` is the canonical common checkout. Simple uses project-owned
 `.spipe/common` to route to it; the workspace uses `~/.spipe/common -> ~/spipe`.
-Discovery follows explicit `SPIPE_HOME`, project `.spipe/common`,
-`~/spipe`, `~/.spipe/common`, and an identified direct checkout. Existing
-`.spipe/spipe`, `.spipe/spipe_project`, and legacy `~/.spipe` package checkouts
-are migration fallbacks. Validate project revision requirements and diagnose
+Discovery follows explicit `SPIPE_HOME`, then the nearest project
+`.spipe/common`, `.spipe/spipe`, `.spipe/spipe_project`, or identified `.spipe`
+before `~/spipe`, `~/.spipe/common`, an identified direct checkout, and legacy
+home package checkout. Validate project revision requirements and diagnose
 incompatibility without silently upgrading or relocating a recorded dependency.
 Missing or invalid required common is a setup error. Acquisition choices are
 Internet, intranet mirror, and Simple's route to the common checkout (or an
@@ -38,10 +38,10 @@ See [agent/bootstrap guidance](../docs/PLUGIN_AGENT_BOOTSTRAP.md) and
 [distribution design](../docs/INTRANET_MIRROR_AND_DISCOVERY.md). Shared
 `locate_common`, `resolve_workspace`, `resolve_active_scopes`,
 `compile_research_context`, and `explain_resolution` APIs remain an integration
-target until corresponding exports exist. The shared locator, workspace
-bootstrap, installer, and dedicated-mirror entrypoints are shipped under
-`scripts/`; each mutating distribution workflow plans by default and requires
-explicit apply. Plugin installation alone
+target until corresponding exports exist. The SPipe package ships the shared
+locator, workspace bootstrap, installer, and dedicated-mirror entrypoints under
+root `scripts/`; plugin guidance invokes that package locator. Each mutating
+distribution workflow plans by default and requires explicit apply. Plugin installation alone
 does not establish a trusted scope resolver.
 
 The canonical version is projected from `../release/version.sdn`. The plugin

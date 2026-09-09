@@ -178,11 +178,15 @@ test('project legacy pin wins when a global common checkout also exists', t => {
   git(project, ['-c', 'protocol.file.allow=always', 'submodule', 'add', f.upstream, '.spipe/spipe']);
   const global = join(fakeHome, 'spipe');
   git(f.root, ['clone', f.upstream, global]);
-  const previous = process.env.HOME;
+  const previous = process.env.HOME, previousProfile = process.env.USERPROFILE;
   process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
   try {
     const options = { root: f.workspace, user: 'alice', host: 'build-01', project: 'legacy', 'project-path': project, apply: true };
     assert.equal(workspaceSetup(options).commit, f.pin);
     assert.equal(realpathSync(join(f.workspace, 'common')), realpathSync(join(project, '.spipe/spipe')));
-  } finally { if (previous === undefined) delete process.env.HOME; else process.env.HOME = previous; }
+  } finally {
+    if (previous === undefined) delete process.env.HOME; else process.env.HOME = previous;
+    if (previousProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousProfile;
+  }
 });

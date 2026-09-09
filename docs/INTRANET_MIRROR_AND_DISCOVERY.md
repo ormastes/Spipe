@@ -65,9 +65,9 @@ No credentials are stored in SDN or in clone URLs.
 
 Use the canonical order and failure behavior in
 [Plugin/agent bootstrap](PLUGIN_AGENT_BOOTSTRAP.md): explicit `SPIPE_HOME`,
-project `.spipe/common`, `~/spipe`, `~/.spipe/common`, an identified
-direct package, then legacy project `.spipe/spipe`, `.spipe/spipe_project`, or
-legacy `~/.spipe` package roots. Fail explicitly
+nearest project `.spipe/common`, `.spipe/spipe`, `.spipe/spipe_project`, or
+identified `.spipe`, then `~/spipe`, `~/.spipe/common`, an identified direct
+package, and legacy `~/.spipe` package roots. Fail explicitly
 for invalid required selections or missing common. Discovery and mirror origin
 confer no private-scope authorization.
 
