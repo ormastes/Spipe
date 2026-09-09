@@ -58,7 +58,6 @@ test("project common precedes home locations and legacy project mounts remain re
     assert.equal(run(nested, home).stdout.trim(), common);
     rmSync(common, { recursive: true, force: true });
     const legacy = root(join(project, ".spipe", "spipe"));
-    rmSync(join(home, "spipe"), { recursive: true, force: true });
     assert.equal(run(nested, home).stdout.trim(), legacy);
   } finally { rmSync(base, { recursive: true, force: true }); }
 });

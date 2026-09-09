@@ -48,7 +48,7 @@ export function workspaceSetup(options) {
   if (!selected && !oldManifest && legacy.length > 1) throw Error('Multiple common candidates; select --common explicitly');
   if (oldManifest && !within(root, pathValue(join(root, oldManifest.common.path)))) throw Error('Portable common path escapes workspace');
   const globalCommon = join(homedir(), 'spipe');
-  const projectCommon = projectPath ? [join(projectPath, '.spipe/common'), ...(isPackage(globalCommon) ? [] : [join(projectPath, '.spipe/spipe'), join(projectPath, '.spipe/spipe_project'), join(projectPath, '.spipe')])].find(isPackage) : null;
+  const projectCommon = projectPath ? [join(projectPath, '.spipe/common'), join(projectPath, '.spipe/spipe'), join(projectPath, '.spipe/spipe_project'), join(projectPath, '.spipe')].find(isPackage) : null;
   const common = selected ? pathValue(selected) : oldManifest ? join(root, oldManifest.common.path) : legacy[0] || projectCommon || globalCommon;
   const exists = present(common);
   let commit = exists ? cleanPackage(common) : options['common-ref'] || INITIAL_PIN;

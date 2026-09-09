@@ -171,3 +171,18 @@ test('project common route is discovered and its submodule pin survives repeat s
     assert.equal(realpathSync(join(f.workspace, 'common')), realpathSync(join(project, '.spipe/common')));
   } finally { if (previous !== undefined) process.env.SPIPE_HOME = previous; }
 });
+
+test('project legacy pin wins when a global common checkout also exists', t => {
+  const f = fixture(t), project = join(f.root, 'legacy-project'), fakeHome = join(f.root, 'home');
+  mkdirSync(project); mkdirSync(fakeHome); git(project, ['init', '-b', 'main']);
+  git(project, ['-c', 'protocol.file.allow=always', 'submodule', 'add', f.upstream, '.spipe/spipe']);
+  const global = join(fakeHome, 'spipe');
+  git(f.root, ['clone', f.upstream, global]);
+  const previous = process.env.HOME;
+  process.env.HOME = fakeHome;
+  try {
+    const options = { root: f.workspace, user: 'alice', host: 'build-01', project: 'legacy', 'project-path': project, apply: true };
+    assert.equal(workspaceSetup(options).commit, f.pin);
+    assert.equal(realpathSync(join(f.workspace, 'common')), realpathSync(join(project, '.spipe/spipe')));
+  } finally { if (previous === undefined) delete process.env.HOME; else process.env.HOME = previous; }
+});

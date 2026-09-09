@@ -19,6 +19,9 @@ function projectCandidates(start) {
   let current = resolve(start);
   while (true) {
     found.push(join(current, ".spipe", "common"));
+    found.push(join(current, ".spipe", "spipe"));
+    found.push(join(current, ".spipe", "spipe_project"));
+    found.push(join(current, ".spipe"));
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
@@ -39,13 +42,6 @@ candidates.push(...projectCandidates(process.cwd()));
 candidates.push(join(home, "spipe"));
 candidates.push(join(home, ".spipe", "common"));
 candidates.push(process.cwd());
-
-for (let current = resolve(process.cwd()); ; current = dirname(current)) {
-  candidates.push(join(current, ".spipe"));
-  candidates.push(join(current, ".spipe", "spipe"));
-  candidates.push(join(current, ".spipe", "spipe_project"));
-  if (dirname(current) === current) break;
-}
 candidates.push(join(home, ".spipe"));
 
 const seen = new Set();
