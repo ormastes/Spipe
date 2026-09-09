@@ -55,7 +55,7 @@ export function cleanPackage(root) {
   if (git(root, ['status', '--porcelain', '--untracked-files=all'])) throw Error(`Common checkout is dirty: ${root}`);
   const head = git(root, ['rev-parse', 'HEAD']);
   const parent = git(root, ['rev-parse', '--show-superproject-working-tree']);
-  if (parent && !git(parent, ['ls-files', '--stage', '--', relative(parent, root)]).startsWith(`160000 ${head} 0\t`)) throw Error('Common checkout differs from its recorded project gitlink');
+  if (parent && !git(parent, ['ls-files', '--stage', '--', relative(realpathSync(parent), realpathSync(root))]).startsWith(`160000 ${head} 0\t`)) throw Error('Common checkout differs from its recorded project gitlink');
   return head;
 }
 export function source(value, localAllowed = false) {

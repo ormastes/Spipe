@@ -158,3 +158,16 @@ test('failed fresh clone leaves no checkout and releases cooperative setup lock'
   assert.equal(existsSync(f.checkout), false);
   assert.equal(existsSync(join(f.workspace, '.spipe-setup.lock')), false);
 });
+
+test('project common route is discovered and its submodule pin survives repeat setup', t => {
+  const f = fixture(t), project = join(f.root, 'project'); mkdirSync(project); git(project, ['init', '-b', 'main']);
+  git(project, ['-c', 'protocol.file.allow=always', 'submodule', 'add', f.upstream, '.spipe/common']);
+  const previous = process.env.SPIPE_HOME;
+  delete process.env.SPIPE_HOME;
+  try {
+    const options = { root: f.workspace, user: 'alice', host: 'build-01', project: 'firmware', 'project-path': project, apply: true };
+    assert.equal(workspaceSetup(options).commit, f.pin);
+    assert.equal(workspaceSetup(options).commit, f.pin);
+    assert.equal(realpathSync(join(f.workspace, 'common')), realpathSync(join(project, '.spipe/common')));
+  } finally { if (previous !== undefined) process.env.SPIPE_HOME = previous; }
+});
