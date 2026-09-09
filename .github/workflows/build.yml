@@ -26,3 +26,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./test/windows/setup_spipe_links_containment.ps1
+      - name: Verify external common PowerShell setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./test/windows/setup_local_knowledge_external_common.ps1
