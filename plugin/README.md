@@ -27,6 +27,13 @@ Missing or invalid required common is a setup error. Acquisition choices are
 Internet, intranet mirror, and Simple's route to the common checkout (or an
 explicitly retained legacy pin). Discovery grants no private-scope authority.
 
+Claude, Codex, Gemini, and other adapters should run the shared locator with
+`--agent-guide`, then read the existing paths it prints. The guide includes the
+common `wiki/` and `skills/` indexes, the canonical research skill, bootstrap
+guides, and compatibility knowledge routes. `SPIPE_HOME` is a fail-closed
+explicit selection and supports native Windows paths, including paths with
+spaces.
+
 See [agent/bootstrap guidance](../docs/PLUGIN_AGENT_BOOTSTRAP.md) and
 [distribution design](../docs/INTRANET_MIRROR_AND_DISCOVERY.md). Shared
 `locate_common`, `resolve_workspace`, `resolve_active_scopes`,

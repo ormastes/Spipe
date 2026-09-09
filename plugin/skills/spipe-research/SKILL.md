@@ -17,6 +17,12 @@ incompatible requirement needs an explicit diagnostic and retained approved
 legacy route, not a silent pin upgrade. Do not scan arbitrary home-directory
 trees or silently skip an invalid explicit selection.
 
+Bootstrap with `node scripts/find-spipe.mjs --agent-guide` from the identified
+common package and read the existing paths it prints. Those paths expose the
+common wiki and skills indexes, this canonical research skill, setup guides,
+and compatibility knowledge routes. Adapters must consume this output instead
+of independently guessing a different common root.
+
 If common cannot be resolved, stop research and show Internet installation,
 intranet-mirror installation, and Simple's project route to common (or approved
 legacy dependency initialization) as setup choices. Do not install, update, or publish a mirror
