@@ -83,13 +83,16 @@ else
   if [ ! -d "$DESTINATION/.git" ] && ! git -C "$DESTINATION" rev-parse --git-dir >/dev/null 2>&1; then
     echo "setup-local-knowledge: project destination is not a Git checkout" >&2; exit 3
   fi
-  if git -C "$DESTINATION" ls-files --stage -- .spipe | grep -q '^160000 '; then
+  if [ -f "$DESTINATION/.spipe/common/package.json" ] &&
+     grep -Eq '"name"[[:space:]]*:[[:space:]]*"@simple-lang/spipe"' "$DESTINATION/.spipe/common/package.json"; then
+    echo "common_layout=.spipe/common (external canonical checkout)"
+  elif git -C "$DESTINATION" ls-files --stage -- .spipe | grep -q '^160000 '; then
     git -C "$DESTINATION" submodule update --init -- .spipe
   elif git -C "$DESTINATION" ls-files --stage -- .spipe/spipe | grep -q '^160000 '; then
     git -C "$DESTINATION" submodule update --init -- .spipe/spipe
     echo "legacy_layout=.spipe/spipe (preserved; migration requires a reviewed plan)"
   else
-    echo "setup-local-knowledge: project has no recorded .spipe submodule" >&2; exit 3
+    echo "setup-local-knowledge: project has no .spipe/common route or recorded legacy submodule" >&2; exit 3
   fi
 fi
 

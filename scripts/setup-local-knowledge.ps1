@@ -34,13 +34,16 @@ if ($Mode -eq "user") {
     elseif (-not $Gitlink.StartsWith("160000 ")) { throw "Occupied non-submodule target: $CommonPath" }
 } elseif ($Mode -eq "project") {
     & git -C $Destination rev-parse --git-dir | Out-Null
+    $CommonRoute = Join-Path $Destination ".spipe/common/package.json"
+    $ExternalCommon = (Test-Path $CommonRoute) -and ((Get-Content -Raw $CommonRoute) -match '"name"\s*:\s*"@simple-lang/spipe"')
     $Direct = ((& git -C $Destination ls-files --stage -- .spipe) -join "`n").StartsWith("160000 ")
     $Legacy = ((& git -C $Destination ls-files --stage -- .spipe/spipe) -join "`n").StartsWith("160000 ")
-    if ($Direct) { & git -C $Destination submodule update --init -- .spipe }
+    if ($ExternalCommon) { Write-Output "common_layout=.spipe/common (external canonical checkout)" }
+    elseif ($Direct) { & git -C $Destination submodule update --init -- .spipe }
     elseif ($Legacy) {
         & git -C $Destination submodule update --init -- .spipe/spipe
         Write-Output "legacy_layout=.spipe/spipe (preserved; migration requires a reviewed plan)"
-    } else { throw "Project has no recorded .spipe submodule" }
+    } else { throw "Project has no .spipe/common route or recorded legacy submodule" }
 } else { throw "Mode must be user or project" }
 
 if ($Mode -eq "user") { $Registry = Join-Path $Destination "local/scopes.sdn" }

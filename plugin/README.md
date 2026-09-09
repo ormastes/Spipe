@@ -5,6 +5,36 @@ agent-process module.
 
 - `.codex-plugin/plugin.json` describes the skill, command, and MCP surfaces.
 - `manifest.sdn` is a plain process manifest for non-Codex installers.
+- `skills/spipe-research/SKILL.md` defines scope-aware wiki research and
+  owner-correct writeback.
+
+The research skill composes authorized wiki scopes in the order common,
+company, organization(s), project(s), user, then host. It distinguishes raw
+evidence (`raw/`), synthesized knowledge (`wiki/`), normative artifacts (`doc/`),
+and procedures (`skills/`). `runtime/<user>/<host>/` contains reconstructible
+`cache/`, retained `state/`, live coordination `run/`, and bounded `tmp/`.
+Retained research history is not disposable cache; runtime is never canonical
+knowledge.
+
+`~/spipe` is the canonical common checkout. Simple uses project-owned
+`.spipe/common` to route to it; the workspace uses `~/.spipe/common -> ~/spipe`.
+Discovery follows explicit `SPIPE_HOME`, project `.spipe/common`,
+`~/spipe`, `~/.spipe/common`, and an identified direct checkout. Existing
+`.spipe/spipe`, `.spipe/spipe_project`, and legacy `~/.spipe` package checkouts
+are migration fallbacks. Validate project revision requirements and diagnose
+incompatibility without silently upgrading or relocating a recorded dependency.
+Missing or invalid required common is a setup error. Acquisition choices are
+Internet, intranet mirror, and Simple's route to the common checkout (or an
+explicitly retained legacy pin). Discovery grants no private-scope authority.
+
+See [agent/bootstrap guidance](../docs/PLUGIN_AGENT_BOOTSTRAP.md) and
+[distribution design](../docs/INTRANET_MIRROR_AND_DISCOVERY.md). Shared
+`locate_common`, `resolve_workspace`, `resolve_active_scopes`,
+`compile_research_context`, and `explain_resolution` APIs remain an integration
+target until corresponding exports exist. `find-spipe.mjs` is shipped; the
+`install-spipe.mjs` and `sync-spipe-mirror.mjs` entrypoints remain proposed.
+Plugin installation alone
+does not establish a trusted scope resolver.
 
 The canonical version is projected from `../release/version.sdn`. The plugin
 includes guarded token-owned local sessions, read-only main fix discovery,
