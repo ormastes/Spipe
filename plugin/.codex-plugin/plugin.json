@@ -1,7 +1,7 @@
 {
   "name": "spipe",
   "version": "0.2.0",
-  "description": "SPipe guarded release sessions, planning, process guidance, and MCP tools.",
+  "description": "SPipe scoped research, guarded release sessions, planning, process guidance, and MCP tools.",
   "author": {
     "name": "Simple Project"
   },
@@ -15,8 +15,8 @@
   },
   "interface": {
     "displayName": "SPipe",
-    "shortDescription": "Guarded software-release planning and process tools",
-    "longDescription": "Create and sync token-owned local Git release sessions, bind release plans to actual repository state, and explain broker-bound scoped self-review admission without claiming an APPROVED review.",
+    "shortDescription": "Scope-aware research and guarded release tools",
+    "longDescription": "Research authorized common, company, organization, project, user, and host knowledge; create and sync token-owned local Git release sessions; and explain broker-bound scoped self-review admission without claiming an APPROVED review.",
     "developerName": "Simple Project",
     "category": "Developer Tools",
     "capabilities": ["Read", "Planning", "Local Workspace Write", "Network Fetch"],
@@ -26,7 +26,8 @@
       "Check reviewed fixes for beta backporting.",
       "Validate an immutable candidate promotion.",
       "Create a server-side review request for a repository, pull request, session, or feature.",
-      "Explain why I cannot approve my own GitHub pull request and evaluate SPipe self-review admission."
+      "Explain why I cannot approve my own GitHub pull request and evaluate SPipe self-review admission.",
+      "Research this project through its authorized SPipe wiki scopes and report evidence provenance."
     ]
   }
 }

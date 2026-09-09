@@ -5,6 +5,14 @@ agent-process module.
 
 - `.codex-plugin/plugin.json` describes the skill, command, and MCP surfaces.
 - `manifest.sdn` is a plain process manifest for non-Codex installers.
+- `skills/spipe-research/SKILL.md` defines scope-aware wiki research and
+  owner-correct writeback.
+
+The research skill composes authorized wiki scopes in the order common,
+company, organization(s), project(s), user, then host. It distinguishes raw
+evidence, synthesized wiki knowledge, normative docs, procedures, and disposable
+`runtime/<user>/<host>` state. The shared resolver APIs named by the skill are a
+planned plugin contract until corresponding exports are implemented.
 
 The canonical version is projected from `../release/version.sdn`. The plugin
 includes guarded token-owned local sessions, read-only main fix discovery,

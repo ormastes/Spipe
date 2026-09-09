@@ -51,3 +51,6 @@ plugin:
     explicit_user_authorization_evidence: true
     broker_registered_status_invalidation: true
     structured_self_review_rejection_guidance: true
+    scope_aware_research_skill: true
+    scope_aware_resolver_api: false
+    runtime_is_canonical_knowledge: false
