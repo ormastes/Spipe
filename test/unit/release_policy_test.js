@@ -262,7 +262,10 @@ test("beta convergence discovers main fixes but requires selection and validates
 test("guarded planners fail closed on unsafe requests", () => {
   assert.throws(() => createReleasePlan("isolated-session", { ...sessionInput(), work_branch: "main" }), /work_branch/);
   assert.throws(() => createReleasePlan("isolated-session", { ...sessionInput(), workspace_path: `${root}/.` }), /physical main worktree/);
-  if (process.platform !== "win32") assert.throws(() => createReleasePlan("isolated-session", { ...sessionInput(), workspace_path: `/proc/self/root${root}` }), /physical main worktree/);
+  // /proc/self/root is a Linux-only magic symlink; on macOS/BSD the path does
+  // not exist so the planner fails earlier with the wrong diagnostic. The
+  // same-physical-workspace check itself is covered above by `${root}/.`.
+  if (process.platform === "linux") assert.throws(() => createReleasePlan("isolated-session", { ...sessionInput(), workspace_path: `/proc/self/root${root}` }), /physical main worktree/);
   assert.throws(() => createReleasePlan("isolated-session", { ...sessionInput(), session_id: "../owner" }), /session_id/);
   assert.throws(() => createReleasePlan("isolated-session", { ...sessionInput(), work_branch: "work/../../main" }), /work_branch/);
   assert.throws(() => createReleasePlan("beta-backport", { ...backportInput(), change_kind: "feat" }), /change_kind must be fix/);
