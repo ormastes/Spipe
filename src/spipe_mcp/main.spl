@@ -1,0 +1,445 @@
+# SPipe MCP server — Simple build (stage 1 of the Simple-language migration).
+#
+# Ports mcp/server.js to a newline-delimited JSON-RPC stdio server using only
+# Simple stdlib (no std.mcp_sdk import: the facade serves tools only, while
+# SPipe also advertises the spipe://skill resource, so this server follows the
+# src/app/mcp pattern — extern stdin_read_char + print_raw NDJSON loop — and
+# keeps the Node protocol surface byte-for-byte, including protocolVersion
+# 2024-11-05 and -32000 tool errors).
+#
+# Tools implemented natively: spipe_info, spipe_experts, spipe_read_doc,
+# spipe_fine_tune_guide, spipe_fine_tune_model_guide, spipe_fine_tune_template,
+# spipe_self_review_guide, spipe_release_guide, plus the spipe://skill resource.
+# The release/review planning tool family is still served by the Node server
+# (mcp/server.js); calling them here returns a JSON-RPC error saying so. The
+# tools/list advertisement is byte-identical to the Node server via
+# tools_list_fixture.json (captured from `node mcp/server.js` tools/list).
+#
+# The module root is taken from SPIPE_MODULE_ROOT (set by bin/spipe-mcp), so a
+# copied or npm-installed tree reports its own paths exactly like the Node
+# server resolves moduleRoot from import.meta.url.
+
+use std.io_runtime.{env_get, cli_arg_at, cwd, dir_list, file_exists, file_read, is_dir}
+use std.nogc_sync_mut.io.stderr_ops.{stderr_write, stderr_flush}
+
+extern fn print_raw(s: text)
+extern fn stdin_read_char() -> text
+
+fn spm_err(msg: text):
+    stderr_write("[spipe-mcp] " + msg + "\n")
+    stderr_flush()
+
+# --- Paths ---
+
+# Collapse "." / ".." / duplicate slashes in an absolute path (POSIX; the
+# module and its paths never contain Windows separators in stage 1).
+fn spm_normalize(p: text) -> text:
+    val raw = p.split("/")
+    var parts: [text] = []
+    for piece in raw:
+        if piece == "" or piece == ".":
+            continue
+        if piece == "..":
+            if parts.len() > 0:
+                var kept: [text] = []
+                var i = 0
+                while i < parts.len() - 1:
+                    kept.push(parts[i])
+                    i = i + 1
+                parts = kept
+        else:
+            parts.push(piece)
+    var out = ""
+    for piece in parts:
+        out = out + "/" + piece
+    if out == "":
+        return "/"
+    out
+
+fn spm_dirname(p: text) -> text:
+    var i = p.len() - 1
+    while i > 0:
+        if p[i:i + 1] == "/":
+            return p.substring(0, i)
+        i = i - 1
+    "/"
+
+fn spm_module_root() -> text:
+    val env_root = env_get("SPIPE_MODULE_ROOT")
+    if env_root != "":
+        return spm_normalize(env_root)
+    # Fallback: derive from the entry script path <root>/src/spipe_{mcp,cli}/main.spl.
+    var arg0 = cli_arg_at(0)
+    if not arg0.starts_with("/"):
+        arg0 = cwd() + "/" + arg0
+    var cut = arg0.index_of("/src/spipe_mcp/main.spl") ?? -1
+    if cut < 0:
+        cut = arg0.index_of("/src/spipe_cli/main.spl") ?? -1
+    if cut > 0:
+        return spm_normalize(arg0.substring(0, cut))
+    spm_normalize(spm_dirname(spm_dirname(arg0)))
+
+# --- Version ---
+
+# Read the canonical semver from release/version.sdn. Stage 1 does not yet
+# re-verify every declared projection the way the Node canonicalVersion does.
+fn spm_version(root: text) -> text:
+    val content = file_read(root + "/release/version.sdn")
+    for line in content.split("\n"):
+        val trimmed = line.trim()
+        if trimmed.starts_with("semver:"):
+            val rest = trimmed.substring("semver:".len()).trim()
+            return rest
+    spm_err("release/version.sdn has no semver field")
+    "0.0.0"
+
+# --- Directory listings (dirs only, sorted, like the Node listDirs) ---
+fn spm_text_lt(a: text, b: text) -> bool:
+    val alen = a.len()
+    val blen = b.len()
+    var i = 0
+    while i < alen and i < blen:
+        val ca = a[i:i + 1]
+        val cb = b[i:i + 1]
+        if ca < cb:
+            return true
+        if ca > cb:
+            return false
+        i = i + 1
+    alen < blen
+
+fn spm_sort(items: [text]) -> [text]:
+    var out: [text] = []
+    for item in items:
+        var inserted = false
+        var next: [text] = []
+        for existing in out:
+            if not inserted and spm_text_lt(item, existing):
+                next.push(item)
+                inserted = true
+            next.push(existing)
+        if not inserted:
+            next.push(item)
+        out = next
+    out
+
+fn spm_list_dirs(abs_path: text) -> [text]:
+    if not is_dir(abs_path):
+        return []
+    var names: [text] = []
+    for entry in dir_list(abs_path):
+        if is_dir(abs_path + "/" + entry):
+            names.push(entry)
+    spm_sort(names)
+
+# --- readDoc with the Node allowlist ---
+
+fn spm_read_doc(root: text, path: text) -> text:
+    if path == "" or path.contains("..") or path.starts_with("/") or path.starts_with("\\"):
+        spm_err("spm_read_doc rejected path: " + path)
+        return ""
+    val allowed = [
+        "README.md",
+        "doc/00_llm_process/spipe/",
+        "doc/00_llm_process/skill_command/",
+        "doc/00_llm_process/project_expert/",
+        "doc/00_llm_process/domain_expert/",
+        "doc/00_llm_process/tool_expert/",
+        "doc/00_llm_process/template/"
+    ]
+    var ok = false
+    for prefix in allowed:
+        if path == prefix or path.starts_with(prefix):
+            ok = true
+    if not ok:
+        spm_err("spm_read_doc path outside allowlist: " + path)
+        return ""
+    val abs = root + "/" + path
+    if not file_exists(abs):
+        spm_err("spm_read_doc document not found: " + path)
+        return ""
+    file_read(abs)
+
+# --- Minimal JSON helpers (key-sorted output matches the Node stableJson) ---
+
+fn spm_json_escape(s: text) -> text:
+    var out = ""
+    var i = 0
+    while i < s.len():
+        val ch = s[i:i + 1]
+        if ch == "\"":
+            out = out + "\\\""
+        elif ch == "\\":
+            out = out + "\\\\"
+        elif ch == "\n":
+            out = out + "\\n"
+        elif ch == "\r":
+            out = out + "\\r"
+        elif ch == "\t":
+            out = out + "\\t"
+        elif ch < " ":
+            val code = s.char_code_at(i)
+            out = out + "\\u" + spm_hex4(code)
+        else:
+            out = out + ch
+        i = i + 1
+    out
+
+fn spm_hex4(code: i64) -> text:
+    val digits = "0123456789abcdef"
+    var out = ""
+    var shift = 12
+    while shift >= 0:
+        val d = (code >> shift) % 16
+        out = out + digits[d:d + 1]
+        shift = shift - 4
+    out
+
+# Extract a JSON string value for key: "key":"value" → value (unquoted).
+# Tolerates whitespace around the colon so pretty-printed requests work.
+fn spm_extract_str(msg: text, key: text) -> text:
+    val needle = "\"" + key + "\""
+    val pos = msg.index_of(needle) ?? -1
+    if pos < 0:
+        return ""
+    var p = pos + needle.len()
+    while p < msg.len() and spm_is_ws(msg[p:p + 1]):
+        p = p + 1
+    if p >= msg.len() or msg[p:p + 1] != ":":
+        return ""
+    p = p + 1
+    while p < msg.len() and spm_is_ws(msg[p:p + 1]):
+        p = p + 1
+    if p >= msg.len() or msg[p:p + 1] != "\"":
+        return ""
+    val after = msg.substring(p + 1)
+    var end = 0
+    var escaped = false
+    while end < after.len():
+        val ch = after[end:end + 1]
+        if escaped:
+            escaped = false
+            end = end + 1
+        elif ch == "\\":
+            escaped = true
+            end = end + 1
+        elif ch == "\"":
+            return after.substring(0, end)
+        else:
+            end = end + 1
+    ""
+
+fn spm_is_ws(ch: text) -> bool:
+    ch == " " or ch == "\n" or ch == "\r" or ch == "\t"
+
+# Extract the raw JSON-RPC id token (number, quoted string, or null).
+fn spm_extract_id(msg: text) -> text:
+    val needle = "\"id\":"
+    val pos = msg.index_of(needle) ?? -1
+    if pos < 0:
+        return ""
+    var p = pos + needle.len()
+    while p < msg.len() and spm_is_ws(msg[p:p + 1]):
+        p = p + 1
+    if p >= msg.len():
+        return ""
+    if msg[p:p + 1] == "\"":
+        val after = msg.substring(p + 1)
+        var end = 0
+        var escaped = false
+        while end < after.len():
+            val ch = after[end:end + 1]
+            if escaped:
+                escaped = false
+                end = end + 1
+            elif ch == "\\":
+                escaped = true
+                end = end + 1
+            elif ch == "\"":
+                return "\"" + after.substring(0, end) + "\""
+            else:
+                end = end + 1
+        return ""
+    var end = p
+    while end < msg.len():
+        val ch = msg[end:end + 1]
+        if ch == "," or ch == "}" or ch == "]" or spm_is_ws(ch):
+            return msg.substring(p, end)
+        end = end + 1
+    msg.substring(p, end)
+
+# --- Response builders (stableJson key order, like the Node transport) ---
+
+fn spm_resp_result(id: text, result_json: text) -> text:
+    "{\"id\":" + id + ",\"jsonrpc\":\"2.0\",\"result\":" + result_json + "}"
+
+fn spm_resp_error(id: text, code: text, message: text) -> text:
+    val id_part = if id == "":
+        "null"
+    else:
+        id
+    "{\"error\":{\"code\":" + code + ",\"message\":\"" + spm_json_escape(message) + "\"},\"id\":" + id_part + ",\"jsonrpc\":\"2.0\"}"
+
+fn spm_tool_text(content: text) -> text:
+    "{\"content\":[{\"text\":\"" + spm_json_escape(content) + "\",\"type\":\"text\"}]}"
+
+fn spm_init_json(root: text) -> text:
+    "{\"capabilities\":{\"resources\":{},\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"spipe\",\"version\":\"" + spm_json_escape(spm_version(root)) + "\"}}"
+
+# --- Tool dispatch ---
+
+fn spm_surfaces_text(root: text) -> text:
+    var out = "module=" + root
+    out = out + "\nsurface=doc/00_llm_process/skill_command"
+    out = out + "\nsurface=doc/00_llm_process/spipe"
+    out = out + "\nsurface=doc/00_llm_process/template"
+    out = out + "\nsurface=doc/00_llm_process/project_expert"
+    out = out + "\nsurface=doc/00_llm_process/domain_expert"
+    out = out + "\nsurface=doc/00_llm_process/tool_expert"
+    out
+
+fn spm_experts_text(root: text) -> text:
+    "project_expert=" + spm_list_dirs(root + "/doc/00_llm_process/project_expert").join(",") +
+        "\ndomain_expert=" + spm_list_dirs(root + "/doc/00_llm_process/domain_expert").join(",") +
+        "\ntool_expert=" + spm_list_dirs(root + "/doc/00_llm_process/tool_expert").join(",")
+
+fn spm_call_tool(root: text, name: text, msg: text) -> text:
+    # Returns the tool result JSON, or "" when the tool must surface an error.
+    if name == "spipe_info":
+        return spm_tool_text(spm_surfaces_text(root))
+    if name == "spipe_experts":
+        return spm_tool_text(spm_experts_text(root))
+    if name == "spipe_read_doc":
+        val path = spm_extract_str(msg, "path")
+        if path == "":
+            return ""
+        if spm_read_doc_error(root, path) != "":
+            return ""
+        return spm_tool_text(file_read(root + "/" + path))
+    if name == "spipe_fine_tune_guide":
+        return spm_tool_text(spm_read_doc(root, "doc/00_llm_process/spipe/llm_finetune.md"))
+    if name == "spipe_fine_tune_model_guide":
+        return spm_tool_text(spm_read_doc(root, "doc/00_llm_process/spipe/llm_model_research.md"))
+    if name == "spipe_fine_tune_template":
+        return spm_tool_text(spm_read_doc(root, "doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn"))
+    if name == "spipe_self_review_guide":
+        return spm_tool_text(spm_read_doc(root, "doc/00_llm_process/spipe/self_review_skill.md"))
+    if name == "spipe_release_guide":
+        return spm_tool_text(spm_read_doc(root, "doc/00_llm_process/skill_command/command/release.md"))
+    spm_err("tool not ported in Simple build: " + name)
+    ""
+
+fn spm_is_ported(name: text) -> bool:
+    if name == "spipe_info" or name == "spipe_experts" or name == "spipe_read_doc":
+        return true
+    if name == "spipe_fine_tune_guide" or name == "spipe_fine_tune_model_guide":
+        return true
+    if name == "spipe_fine_tune_template" or name == "spipe_self_review_guide":
+        return true
+    if name == "spipe_release_guide":
+        return true
+    false
+
+# --- Message routing (mirrors mcp/protocol/router.js) ---
+
+fn spm_handle(root: text, tools_fixture: text, msg: text):
+    val id = spm_extract_id(msg)
+    val method = spm_extract_str(msg, "method")
+
+    if method == "initialize":
+        print_raw(spm_resp_result(id, spm_init_json(root)) + "\n")
+        return
+
+    if method == "tools/list":
+        print_raw(spm_resp_result(id, tools_fixture) + "\n")
+        return
+
+    if method == "tools/call":
+        val name = spm_extract_str(msg, "name")
+        val advertised = tools_fixture.contains("\"name\":\"" + name + "\"")
+        if not advertised:
+            print_raw(spm_resp_error(id, "-32000", "unknown tool: " + name) + "\n")
+            return
+        if not spm_is_ported(name):
+            print_raw(spm_resp_error(id, "-32000", "not yet ported in Simple build; use Node mcp/server.js fallback: " + name) + "\n")
+            return
+        val result_json = spm_call_tool(root, name, msg)
+        if result_json == "":
+            # spm_read_doc rejected the path.
+            val path = spm_extract_str(msg, "path")
+            print_raw(spm_resp_error(id, "-32000", spm_read_doc_error(root, path)) + "\n")
+            return
+        print_raw(spm_resp_result(id, result_json) + "\n")
+        return
+
+    if method == "resources/list":
+        print_raw(spm_resp_result(id, "{\"resources\":[{\"description\":\"Canonical SPipe skill guide.\",\"mimeType\":\"text/markdown\",\"name\":\"SPipe Skill\",\"uri\":\"spipe://skill\"}]}") + "\n")
+        return
+
+    if method == "resources/read":
+        val uri = spm_extract_str(msg, "uri")
+        if uri != "spipe://skill":
+            print_raw(spm_resp_error(id, "-32000", "unknown resource: " + uri) + "\n")
+            return
+        val skill_path = "doc/00_llm_process/spipe/skill.md"
+        if not file_exists(root + "/" + skill_path):
+            print_raw(spm_resp_error(id, "-32000", "document not found: " + skill_path) + "\n")
+            return
+        val text = file_read(root + "/" + skill_path)
+        print_raw(spm_resp_result(id, "{\"contents\":[{\"mimeType\":\"text/markdown\",\"text\":\"" + spm_json_escape(text) + "\",\"uri\":\"" + spm_json_escape(uri) + "\"}]}") + "\n")
+        return
+
+    # Notifications (no id) get no response, like the Node router.
+    if id == "":
+        return
+    print_raw(spm_resp_result(id, "{}") + "\n")
+
+# Reproduce the Node readDoc error messages for the -32000 envelope.
+fn spm_read_doc_error(root: text, path: text) -> text:
+    if path == "" or path.contains("..") or path.starts_with("/") or path.starts_with("\\"):
+        return "path must be a relative path inside the SPipe module"
+    val allowed = [
+        "README.md",
+        "doc/00_llm_process/spipe/",
+        "doc/00_llm_process/skill_command/",
+        "doc/00_llm_process/project_expert/",
+        "doc/00_llm_process/domain_expert/",
+        "doc/00_llm_process/tool_expert/",
+        "doc/00_llm_process/template/"
+    ]
+    var ok = false
+    for prefix in allowed:
+        if path == prefix or path.starts_with(prefix):
+            ok = true
+    if not ok:
+        return "path is outside the SPipe documentation allowlist"
+    if not file_exists(root + "/" + path):
+        return "document not found: " + path
+    ""
+
+# --- stdio transport: one JSON message per line, like mcp/transport/stdio.js ---
+
+fn spm_serve(root: text):
+    val fixture_path = root + "/src/spipe_mcp/tools_list_fixture.json"
+    var tools_fixture = "{}"
+    if file_exists(fixture_path):
+        tools_fixture = file_read(fixture_path)
+    else:
+        spm_err("tools/list fixture missing: " + fixture_path)
+    var line = ""
+    while true:
+        val ch = stdin_read_char()
+        if ch == "":
+            break
+        if ch == "\n":
+            val trimmed = line.trim()
+            if trimmed != "":
+                spm_handle(root, tools_fixture, trimmed)
+            line = ""
+        else:
+            line = line + ch
+
+fn main():
+    spm_serve(spm_module_root())
+
+main()

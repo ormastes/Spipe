@@ -1,0 +1,128 @@
+# # SPipe CLI parity spec (Simple build, stage 1)
+#
+# Runs each ported core subcommand through BOTH `node cli/spipe.js` and
+# `bin/spipe` with the same CWD and a temp host directory, asserting
+# byte-identical stdout and identical exit codes. Both invocations resolve the
+# same SPipe module root (the migration worktree), so absolute paths in output
+# are identical by construction.
+
+use std.spec
+use std.process.{run}
+use std.io_runtime.{env_get_opt, dir_create_all, shell_output}
+
+fn migration_root() -> text:
+    env_get_opt("SPIPE_MIGRATION_ROOT") ?? "/Users/ormastes/simple/.spipe/spipe-migration"
+
+fn run_pair(command_line: text) -> (text, text, i64, i64):
+    val root = migration_root()
+    val node_r = run("/bin/sh", ["-c", "cd '" + root + "' && node cli/spipe.js " + command_line])
+    val simple_r = run("/bin/sh", ["-c", "cd '" + root + "' && '" + root + "/bin/spipe' " + command_line])
+    (node_r.stdout, simple_r.stdout, node_r.exit_code, simple_r.exit_code)
+
+fn expect_parity(command_line: text):
+    val (node_out, simple_out, node_rc, simple_rc) = run_pair(command_line)
+    expect(simple_rc).to_equal(node_rc)
+    expect(simple_out).to_equal(node_out)
+
+fn make_host(root: text, label: text) -> text:
+    val base = shell_output("mktemp -d /tmp/spipe_parity_host_" + label + "_XXXX") 
+    dir_create_all(base + "/doc/llm_process")
+    dir_create_all(base + "/.spipe")
+    dir_create_all(base + "/examples")
+    shell_output("ln -s '" + root + "' '" + base + "/.spipe/spipe'")
+    shell_output("ln -s '" + root + "' '" + base + "/examples/spipe'")
+    for surface in ["skill_command", "spipe", "template", "project_expert", "domain_expert", "tool_expert"]:
+        dir_create_all(base + "/examples/spipe/doc/00_llm_process/" + surface)
+    dir_create_all(base + "/examples/spipe/doc/00_llm_process/project_expert/simple")
+    dir_create_all(base + "/examples/spipe/doc/00_llm_process/tool_expert/spipe_submodule")
+    shell_output("ln -s ../examples/spipe '" + base + "/.spipe/spipe_project'")
+    shell_output("ln -s ../examples/spipe/doc/00_llm_process/domain_expert '" + base + "/.spipe/domain_expert'")
+    shell_output("ln -s ../examples/spipe/doc/00_llm_process/template '" + base + "/.spipe/template'")
+    shell_output("ln -s ../examples/spipe/doc/00_llm_process/spipe '" + base + "/.spipe/spipe_docs'")
+    dir_create_all(base + "/.spipe/project_expert")
+    dir_create_all(base + "/.spipe/tool_expert")
+    shell_output("ln -s ../../examples/spipe/doc/00_llm_process/project_expert/simple '" + base + "/.spipe/project_expert/spipe'")
+    shell_output("ln -s ../../examples/spipe/doc/00_llm_process/tool_expert/spipe_submodule '" + base + "/.spipe/tool_expert/spipe_submodule'")
+    base
+
+describe "SPipe CLI Simple parity":
+    it "info matches byte-for-byte":
+        expect_parity("info")
+
+    it "experts matches byte-for-byte":
+        expect_parity("experts")
+
+    it "skill matches byte-for-byte":
+        expect_parity("skill")
+
+    it "fine-tune-guide matches byte-for-byte":
+        expect_parity("fine-tune-guide")
+
+    it "fine-tune-model-guide matches byte-for-byte":
+        expect_parity("fine-tune-model-guide")
+
+    it "fine-tune-template matches byte-for-byte":
+        expect_parity("fine-tune-template")
+
+    it "doc-root on a bare host matches, defaulting to doc/llm_process":
+        val root = migration_root()
+        val host = make_host(root, "root")
+        expect_parity("doc-root " + host)
+
+    it "doc-root honors host_process_doc from .spipe/config.sdn":
+        val root = migration_root()
+        val host = make_host(root, "cfg")
+        run("/bin/sh", ["-c", "printf 'docs:\\n  host_process_doc: doc/00_llm_process\\n' > '" + host + "/.spipe/config.sdn'"])
+        expect_parity("doc-root " + host)
+
+    it "link-plan matches on a configured host":
+        val root = migration_root()
+        val host = make_host(root, "lp")
+        run("/bin/sh", ["-c", "printf 'docs:\\n  host_process_doc: doc/00_llm_process\\n' > '" + host + "/.spipe/config.sdn'"])
+        expect_parity("link-plan " + host)
+
+    it "doc-link links identically on a fresh host and reports ok on rerun":
+        val root = migration_root()
+        val host = make_host(root, "dl")
+        # Fresh-host link: reset between runs so both see the same state.
+        run("/bin/sh", ["-c", "rm -f '" + host + "/.spipe/doc'"])
+        val node_first = run("/bin/sh", ["-c", "cd '" + root + "' && node cli/spipe.js doc-link '" + host + "'"])
+        run("/bin/sh", ["-c", "rm -f '" + host + "/.spipe/doc'"])
+        val simple_first = run("/bin/sh", ["-c", "cd '" + root + "' && '" + root + "/bin/spipe' doc-link '" + host + "'"])
+        expect(simple_first.exit_code).to_equal(node_first.exit_code)
+        expect(simple_first.stdout).to_equal(node_first.stdout)
+        expect(simple_first.stdout.contains("doc_link=linked")).to_equal(true)
+        # Rerun on the existing correct link: both must report ok.
+        val node_second = run("/bin/sh", ["-c", "cd '" + root + "' && node cli/spipe.js doc-link '" + host + "'"])
+        val simple_second = run("/bin/sh", ["-c", "cd '" + root + "' && '" + root + "/bin/spipe' doc-link '" + host + "'"])
+        expect(simple_second.exit_code).to_equal(node_second.exit_code)
+        expect(simple_second.stdout).to_equal(node_second.stdout)
+        expect(simple_second.stdout.contains("doc_link=ok")).to_equal(true)
+
+    it "doc-link fails identically when the doc root does not exist":
+        val root = migration_root()
+        val host = make_host(root, "dlx")
+        expect_parity("doc-link " + host + " no/such/root")
+
+    it "doctor passes identically on a fully linked host":
+        val root = migration_root()
+        val host = make_host(root, "doc")
+        run("/bin/sh", ["-c", "cd '" + root + "' && node cli/spipe.js doc-link '" + host + "' >/dev/null"])
+        expect_parity("doctor " + host)
+
+    it "doctor fails identically on an empty host":
+        val root = migration_root()
+        val host = shell_output("mktemp -d /tmp/spipe_parity_host_empty_XXXX")
+        expect_parity("doctor " + host)
+
+    it "unported fine-tune commands exit 3 with the Node fallback pointer":
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "cd '" + root + "' && bin/spipe fine-tune-init 2>/tmp/spipe_parity_ft.err; printf 'rc=%s' \"$?\""])
+        expect(r.stdout.contains("rc=3")).to_equal(true)
+        val err = run("/bin/sh", ["-c", "cat /tmp/spipe_parity_ft.err"])
+        expect(err.stdout.contains("not yet ported in Simple build; use: node cli/spipe.js fine-tune-init")).to_equal(true)
+
+    it "unported release commands exit 3 with the Node fallback pointer":
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "cd '" + root + "' && bin/spipe release-guide 2>/dev/null; printf 'rc=%s' \"$?\""])
+        expect(r.stdout.contains("rc=3")).to_equal(true)

@@ -1,0 +1,234 @@
+# SPipe CLI core helpers — Simple build (stage 1 of the Simple-language
+# migration). Shared path/config/listing logic behind src/spipe_cli/main.spl,
+# mirroring the helper functions at the top of cli/spipe.js.
+#
+# Simple stdlib has no symlink/readlink/chmod, so every link stat and every
+# link creation goes through shell_bool/shell_output delegation (POSIX
+# ln -s/readlink/test -L; Windows cmd /c mklink /J best effort).
+
+use std.io_runtime.{env_get, cli_arg_at, cwd, dir_list, file_exists, dir_exists, is_dir, file_read, shell_bool, shell_output, host_os}
+
+extern fn print_raw(s: text)
+
+fn sp_out_line(s: text):
+    print_raw(s + "\n")
+
+fn sp_out_raw(s: text):
+    print_raw(s)
+
+# --- Paths ---
+
+fn sp_normalize(p: text) -> text:
+    val raw = p.split("/")
+    var parts: [text] = []
+    for piece in raw:
+        if piece == "" or piece == ".":
+            continue
+        if piece == "..":
+            if parts.len() > 0:
+                var kept: [text] = []
+                var i = 0
+                while i < parts.len() - 1:
+                    kept.push(parts[i])
+                    i = i + 1
+                parts = kept
+        else:
+            parts.push(piece)
+    var out = ""
+    for piece in parts:
+        out = out + "/" + piece
+    if out == "":
+        return "/"
+    out
+
+fn sp_dirname(p: text) -> text:
+    var i = p.len() - 1
+    while i > 0:
+        if p[i:i + 1] == "/":
+            return p.substring(0, i)
+        i = i - 1
+    "/"
+
+fn sp_join(a: text, b: text) -> text:
+    if a.ends_with("/"):
+        return a + b
+    a + "/" + b
+
+# POSIX shell single-quote quoting, matching quoteShell in cli/spipe.js.
+fn sp_sh_quote(value: text) -> text:
+    "'" + value.replace("'", "'\\''") + "'"
+
+fn sp_path_exists(p: text) -> bool:
+    dir_exists(p) or file_exists(p)
+
+fn sp_is_windows() -> bool:
+    host_os() == "windows"
+
+fn sp_is_symlink(p: text) -> bool:
+    if sp_is_windows():
+        # Junction/symlink probe via attrib (best effort; mklink /J targets
+        # answer to `dir /al`, but attrib is cheaper for the doctor check).
+        return shell_bool("cmd /c \"fsutil reparsepoint query \"" + p + "\" >nul 2>nul\"")
+    shell_bool("test -L " + sp_sh_quote(p))
+
+fn sp_read_link(p: text) -> text:
+    if sp_is_windows():
+        return ""
+    shell_output("readlink " + sp_sh_quote(p))
+
+fn sp_make_symlink(target: text, link: text) -> bool:
+    if sp_is_windows():
+        # Junctions require an absolute target.
+        return shell_bool("cmd /c mklink /J \"" + link + "\" \"" + sp_normalize(target) + "\"")
+    shell_bool("ln -s " + sp_sh_quote(target) + " " + sp_sh_quote(link))
+
+fn sp_remove_link(p: text) -> bool:
+    if sp_is_windows():
+        return shell_bool("cmd /c rmdir \"" + p + "\"")
+    shell_bool("rm -f " + sp_sh_quote(p))
+
+# Equivalent of node:path relative(from, to) for normalized absolute paths.
+fn sp_relative(from: text, to: text) -> text:
+    val from_parts = sp_normalize(from).split("/")
+    val to_parts = sp_normalize(to).split("/")
+    var common = 0
+    while common < from_parts.len() and common < to_parts.len():
+        if from_parts[common] != to_parts[common]:
+            break
+        common = common + 1
+    var out = ""
+    var i = common
+    while i < from_parts.len():
+        out = out + "../"
+        i = i + 1
+    var j = common
+    var joined = ""
+    while j < to_parts.len():
+        if joined != "":
+            joined = joined + "/"
+        joined = joined + to_parts[j]
+        j = j + 1
+    out + joined
+
+# --- Module root and version ---
+
+fn sp_module_root() -> text:
+    val env_root = env_get("SPIPE_MODULE_ROOT")
+    if env_root != "":
+        return sp_normalize(env_root)
+    var arg0 = cli_arg_at(0)
+    if not arg0.starts_with("/"):
+        arg0 = cwd() + "/" + arg0
+    var cut = arg0.index_of("/src/spipe_cli/main.spl") ?? -1
+    if cut < 0:
+        cut = arg0.index_of("/src/spipe_mcp/main.spl") ?? -1
+    if cut > 0:
+        return sp_normalize(arg0.substring(0, cut))
+    sp_normalize(sp_dirname(sp_dirname(arg0)))
+
+fn sp_version(root: text) -> text:
+    val content = file_read(root + "/release/version.sdn")
+    for line in content.split("\n"):
+        val trimmed = line.trim()
+        if trimmed.starts_with("semver:"):
+            return trimmed.substring("semver:".len()).trim()
+    "0.0.0"
+
+# --- Surface names (order matters for output parity) ---
+
+fn sp_surfaces() -> [text]:
+    ["skill_command", "spipe", "template", "project_expert", "domain_expert", "tool_expert"]
+
+# --- Sorted directory listing (dirs only), like listDirs in cli/spipe.js ---
+
+fn sp_text_lt(a: text, b: text) -> bool:
+    val alen = a.len()
+    val blen = b.len()
+    var i = 0
+    while i < alen and i < blen:
+        val ca = a[i:i + 1]
+        val cb = b[i:i + 1]
+        if ca < cb:
+            return true
+        if ca > cb:
+            return false
+        i = i + 1
+    alen < blen
+
+fn sp_sort(items: [text]) -> [text]:
+    var out: [text] = []
+    for item in items:
+        var inserted = false
+        var next: [text] = []
+        for existing in out:
+            if not inserted and sp_text_lt(item, existing):
+                next.push(item)
+                inserted = true
+            next.push(existing)
+        if not inserted:
+            next.push(item)
+        out = next
+    out
+
+fn sp_list_dirs(abs_path: text) -> [text]:
+    if not is_dir(abs_path):
+        return []
+    var names: [text] = []
+    for entry in dir_list(abs_path):
+        if is_dir(abs_path + "/" + entry):
+            names.push(entry)
+    sp_sort(names)
+
+# --- readConfiguredDocRoot: .spipe/config.sdn host_process_doc, default
+# doc/llm_process (regex ^\s*host_process_doc:\s*([^\s#]+)\s*$ in Node). ---
+
+fn sp_doc_root_from_config(host_root: text) -> text:
+    val config_path = sp_join(host_root, ".spipe/config.sdn")
+    if not file_exists(config_path):
+        return "doc/llm_process"
+    val content = file_read(config_path)
+    for raw_line in content.split("\n"):
+        var line = raw_line
+        while line.starts_with(" ") or line.starts_with("\t"):
+            line = line.substring(1)
+        if not line.starts_with("host_process_doc:"):
+            continue
+        var rest = line.substring("host_process_doc:".len())
+        while rest.starts_with(" ") or rest.starts_with("\t"):
+            rest = rest.substring(1)
+        var token = ""
+        var i = 0
+        while i < rest.len():
+            val ch = rest[i:i + 1]
+            if ch == " " or ch == "\t" or ch == "\r" or ch == "#":
+                break
+            token = token + ch
+            i = i + 1
+        if token == "":
+            continue
+        val trailing = rest.substring(i)
+        var only_ws = true
+        var t = 0
+        while t < trailing.len():
+            val ch = trailing[t:t + 1]
+            if ch != " " and ch != "\t" and ch != "\r":
+                only_ws = false
+            t = t + 1
+        if only_ws:
+            return token
+    "doc/llm_process"
+
+fn sp_default_host(root: text) -> text:
+    sp_normalize(root + "/../..")
+
+# --- linkPlan items: (surface_rel, source_abs, target_abs) ---
+
+fn sp_link_plan(root: text, host_root: text) -> [(text, text, text)]:
+    val doc_root = sp_doc_root_from_config(host_root)
+    var items: [(text, text, text)] = []
+    for surface in sp_surfaces():
+        items.push((
+            doc_root + "/" + surface,
+            sp_join(root, "doc/00_llm_process/" + surface),
+            sp_join(host_root, doc_root + "/" + surface)))
+    items

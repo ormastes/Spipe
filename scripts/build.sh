@@ -490,4 +490,55 @@ test -f "$tmp_host/.spipe/llm-finetune-process/decisions.sdn"
 test -f "$tmp_host/.spipe/llm-finetune-process/app_handoffs.sdn"
 test -f "$tmp_host/.spipe/llm-finetune-process/retune_requests.sdn"
 
+# --- Simple build smoke (stage 1 migration; gated, never fails the build) ---
+# Skips quietly when no Simple runtime is resolvable (e.g. Windows CI without a
+# host checkout). Runtime discovery mirrors bin/spipe: SPIPE_SIMPLE override,
+# else ../../bin/simple from this worktree.
+spipe_simple_runtime=""
+if [ -n "${SPIPE_SIMPLE:-}" ]; then
+  if [ -d "${SPIPE_SIMPLE}" ]; then
+    spipe_simple_runtime="${SPIPE_SIMPLE}/bin/simple"
+  else
+    spipe_simple_runtime="${SPIPE_SIMPLE}"
+  fi
+elif [ -x "${ROOT_DIR}/../../bin/simple" ]; then
+  spipe_simple_runtime="${ROOT_DIR}/../../bin/simple"
+fi
+if [ -n "${spipe_simple_runtime}" ] && [ -x "${spipe_simple_runtime}" ]; then
+  spipe_simple_root="$(CDPATH= cd -- "$(dirname -- "${spipe_simple_runtime}")/.." && pwd)"
+  spipe_simple_lib="${SIMPLE_LIB:-${spipe_simple_root}/src}"
+  # The Simple runtime writes state (.simple logs, the test-daemon .build dir)
+  # next to the sources it runs. Record what does not exist yet and remove it
+  # again afterwards so this module tree stays byte-identical for the
+  # content-identity checks above on later runs.
+  spipe_simple_cleanup=""
+  for spipe_state_dir in "${ROOT_DIR}/.simple" "${ROOT_DIR}/.build"; do
+    if [ ! -e "${spipe_state_dir}" ]; then
+      spipe_simple_cleanup="${spipe_simple_cleanup} ${spipe_state_dir}"
+    fi
+  done
+  # shellcheck disable=SC2064
+  trap "rm -rf ${spipe_simple_cleanup}" EXIT
+  spipe_simple_tmp="$(mktemp -d)"
+  echo "spipe_simple_runtime=${spipe_simple_runtime}"
+  (cd "${spipe_simple_tmp}" && SPIPE_SIMPLE="${spipe_simple_runtime}" SIMPLE_LIB="${spipe_simple_lib}" \
+    "${ROOT_DIR}/bin/spipe" info >/dev/null)
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' |
+    (cd "${spipe_simple_tmp}" && SPIPE_SIMPLE="${spipe_simple_runtime}" SIMPLE_LIB="${spipe_simple_lib}" \
+      "${ROOT_DIR}/bin/spipe-mcp" | grep -q "spipe_info")
+  rm -rf "${spipe_simple_tmp}"
+  # The test runner resolves std.* from its CWD project, so spec runs use the
+  # host checkout cwd; its .build/.simple state there is the normal location
+  # for a Simple project (never this module tree).
+  (cd "${spipe_simple_root}" && SIMPLE_LIB="${spipe_simple_lib}" "${spipe_simple_runtime}" test \
+    "${ROOT_DIR}/test/spipe_mcp_handshake_spec.spl" --mode=interpreter >/dev/null)
+  (cd "${spipe_simple_root}" && SIMPLE_LIB="${spipe_simple_lib}" "${spipe_simple_runtime}" test \
+    "${ROOT_DIR}/test/spipe_cli_parity_spec.spl" --mode=interpreter >/dev/null)
+  rm -rf ${spipe_simple_cleanup}
+  trap - EXIT
+  echo "spipe_simple_build=pass"
+else
+  echo "spipe_simple_build=skip (no Simple runtime; set SPIPE_SIMPLE)"
+fi
+
 echo "spipe_build_status=pass"

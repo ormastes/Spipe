@@ -1,0 +1,7 @@
+# Runtime-created by bin/spipe{,-mcp} while running the Simple sources on a
+# host checkout stdlib (see "Runtime requirements" in README.md). Never commit.
+src/lib
+src/std
+# Simple runtime state (logs, test-daemon dir) when sources are run directly.
+.simple/
+.build/

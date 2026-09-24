@@ -2,8 +2,8 @@ plugin:
   name: spipe
   version: 0.2.0
   description: Reusable SPipe development, release, and scoped self-review admission module
-  cli: cli/spipe.js
-  mcp: mcp/server.js
+  cli: bin/spipe
+  mcp: bin/spipe-mcp
   setup:
     unix: scripts/setup-spipe-links.sh
     windows: scripts/setup-spipe-links.ps1
