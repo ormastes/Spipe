@@ -40,7 +40,7 @@ if not exist "%SIMPLE_RUNTIME%" (
     if exist "%SPIPE_SIMPLE%\bin\simple.exe" set "SIMPLE_RUNTIME=%SPIPE_SIMPLE%\bin\simple.exe"
 )
 if not exist "%SIMPLE_RUNTIME%" (
-    echo error: no Simple runtime found (set SPIPE_SIMPLE to a simple binary) 1>&2
+    echo error: no Simple runtime found ^(set SPIPE_SIMPLE to a simple binary^) 1>&2
     echo hint: Node fallback available: node cli\spipe.js %* 1>&2
     exit /b 127
 )
