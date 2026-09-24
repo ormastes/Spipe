@@ -1,24 +1,33 @@
 {
   "name": "spipe",
-  "version": "0.1.0",
-  "description": "SPipe commands, experts, CLI, and MCP server for reusable feature-development process.",
-  "skills": [
-    "../.claude/skills/spipe.md",
-    "../.claude/skills/spipe_loop.md",
-    "../.claude/skills/sstack.md",
-    "../.claude/skills/dev.md",
-    "../.claude/skills/sp_dev.md",
-    "../.codex/skills/dev/SKILL.md",
-    "../.codex/skills/sp_dev/SKILL.md"
-  ],
-  "commands": [
-    "../.gemini/commands/dev.toml",
-    "../.gemini/commands/sp_dev.toml"
-  ],
+  "version": "0.2.0",
+  "description": "SPipe scoped research, guarded release sessions, planning, process guidance, and MCP tools.",
+  "author": {
+    "name": "Simple Project"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
   "mcpServers": {
     "spipe": {
       "command": "node",
       "args": ["mcp/server.js"]
     }
+  },
+  "interface": {
+    "displayName": "SPipe",
+    "shortDescription": "Scope-aware research and guarded release tools",
+    "longDescription": "Guide research through authorized common, company, organization, project, user, and host wikis with evidence provenance and retained runtime state. Shared discovery/context APIs are planned. Create and sync token-owned local Git release sessions and explain broker-bound scoped self-review admission without claiming an APPROVED review.",
+    "developerName": "Simple Project",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Planning", "Local Workspace Write", "Network Fetch"],
+    "defaultPrompt": [
+      "Plan an isolated beta release.",
+      "Start or verify an owned release worktree.",
+      "Check reviewed fixes for beta backporting.",
+      "Validate an immutable candidate promotion.",
+      "Create a server-side review request for a repository, pull request, session, or feature.",
+      "Explain why I cannot approve my own GitHub pull request and evaluate SPipe self-review admission.",
+      "Research this project through its authorized SPipe wiki scopes and report evidence provenance."
+    ]
   }
 }

@@ -25,6 +25,9 @@ The package exposes two dependency-free Node entrypoints:
 node cli/spipe.js info
 node cli/spipe.js experts
 node cli/spipe.js doctor ../..
+node cli/spipe.js release-guide
+node cli/spipe.js release-capabilities
+node cli/spipe.js review-capabilities
 node mcp/server.js
 ```
 
@@ -34,6 +37,65 @@ such as `.spipe/doc`, `.spipe/spipe_project`, `.spipe/spipe`, and
 
 When installed as an npm-style package, the binaries are `spipe` and
 `spipe-mcp`.
+
+Protected release operations include guarded local session mutation, but not
+protected-ref or publication authority. With `SPIPE_RELEASE_SESSION_TOKEN`
+configured, the CLI and MCP server can fetch an exact target, create one owned
+worktree/branch, verify its live Git path/branch/HEAD/base/uniqueness, and rebase
+that clean owned branch. Other release tools plan periodic fix discovery,
+explicit beta backports, mandatory forward-ports, immutable candidates, and
+promotion without rebuild. They never select or cherry-pick a fix, update a
+protected ref, build, tag, push, delete, or publish.
+
+Shipped CLI/MCP beta-backport planners support only an exact patch-equivalent
+cherry-pick (`adaptation_reason` must be `none`, and the verified adaptation
+receipt must be empty). Adapted backports fail closed as unsupported until an
+authenticated adaptation-review broker is configured and exposed publicly.
+
+## Guarded release operations
+
+Each planner accepts one exact JSON object and returns a hashed, non-mutating
+plan:
+
+```sh
+node cli/spipe.js release-session-plan '<json>'
+node cli/spipe.js release-session-start '<json>'
+node cli/spipe.js release-session-status '<json>'
+node cli/spipe.js release-session-sync '<json>'
+node cli/spipe.js release-main-fix-discovery-plan '<json>'
+node cli/spipe.js release-beta-backport-plan '<json>'
+node cli/spipe.js release-forward-port-plan '<json>'
+node cli/spipe.js release-candidate-plan '<json>'
+node cli/spipe.js release-candidate-verified-plan '<json>'
+node cli/spipe.js release-promotion-plan '<json>'
+node cli/spipe.js release-withdrawal-plan '<json>'
+```
+
+External protected authorities remain responsible for reviewed integration,
+signed annotated tag creation, exact single-tag push, and publication.
+
+## Server-side review admission
+
+`review-request-create` creates a closed non-mutating request for a repository,
+pull request, isolated session, or feature. Requests cannot supply a head SHA.
+`review-admission-validate` accepts only a current, unexpired receipt verified
+by a configured dedicated broker whose integration ID is pinned by the server.
+See `doc/00_llm_process/spipe/review_admission.md` for the receipt and trust
+boundary. Neither command replaces release or npm environment approvals.
+
+GitHub forbids a pull-request author from submitting an `APPROVED` review on
+their own PR. SPipe therefore uses the separate short-lived
+`SPipe Self Review Admission` required check; it never claims a GitHub approval.
+The closed request must carry current user-authorization actor/timestamp/receipt
+evidence which the broker authenticates. Ordinary reviewed code/text is then
+default-eligible, subject to operator JSONL deny/constrain policy and fixed
+secret/ruleset/signing/review-authority restrictions. The broker binds the exact
+head, base, diff, ruleset, policy, receipts, and expiry, and registers fail-closed
+status invalidation; changed or expired input requires fresh authorization,
+review, and evaluation. Denials return an exact reason code and remediation.
+Run `spipe self-review-guide` whenever an agent searches for `self approve`,
+`approve PR`, or `author cannot approve`; it prints the exact review, protected
+dispatch, and exact-head polling workflow.
 
 The CLI also owns the reusable LLM fine-tune process. It can initialize host
 attempt registries, record data downloads, model research, base-model choice,
@@ -67,6 +129,43 @@ index entries as gitlinks. In the Simple host, run:
 ```sh
 sh scripts/check-spipe-submodule-gitlinks.shs --check
 ```
+
+## Local knowledge ownership
+
+SPipe supports common, company, organization, project, user, and host knowledge
+without copying owner-controlled repositories. Plan a first-user workspace
+interactively, then review and apply the same choices:
+
+```sh
+node scripts/setup-spipe-workspace.mjs init --interactive
+node scripts/setup-spipe-workspace.mjs init --interactive --apply
+```
+
+The default common checkout is `~/spipe`; private workspace state is under
+`~/.spipe`, with `~/.spipe/common` routing to the common checkout. Install or
+update common using an approved Internet or intranet source (plan first):
+
+```sh
+node scripts/install-spipe.mjs --source auto
+node scripts/install-spipe.mjs --source auto --apply
+```
+
+After cloning an ordinary project, register its existing Git root without
+copying or modifying it:
+
+```sh
+node scripts/setup-spipe-workspace.mjs init --interactive \
+  --project my-project --project-path /path/to/my-project
+```
+
+Set `SPIPE_HOME` for an explicit common checkout. Otherwise discovery checks a
+project `.spipe/common`, compatibility `.spipe/spipe` mounts, `~/spipe`, then
+`~/.spipe/common`. Existing legacy setup scripts remain compatibility adapters.
+For a dedicated intranet mirror, see
+`docs/INTRANET_MIRROR_AND_DISCOVERY.md`; mirror publication always requires an
+explicit reviewed apply operation.
+
+See `doc/00_llm_process/knowledge/index.md` for ownership and update rules.
 
 ## Host Setup
 

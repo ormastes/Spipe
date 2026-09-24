@@ -21,6 +21,20 @@ SStack is a full-lifecycle development pipeline that combines three frameworks:
 `/dev` and `/sp_dev` are aliases for `/sstack`. All three run the same 8-phase
 pipeline.
 
+## Isolated session preflight
+
+Before Phase 1, read
+`doc/00_llm_process/skill_command/vcs_session_policy.md`. Create or verify one
+session-owned `work/*` branch in one linked worktree physically separate from
+the protected main worktree. Record owner, session ID, worktree path, work
+branch, target ref, base commit, and expected target commit in the state file.
+Stop on a protected branch, physical-main checkout, shared/unknown branch,
+stale target, ownership mismatch, or unrelated dirty work.
+
+Every phase stays in that worktree. Phase 8 may push only the owned work ref
+with exact lease/CAS and submit its exact head through the PR/integration
+authority. No development phase directly moves a protected ref or release tag.
+
 ## How It Works
 
 1. You (the orchestrator) run Phase 1 **inline** to refine the user request
@@ -88,9 +102,10 @@ The pipeline **never blocks** on missing providers. Every phase is self-sufficie
 
 ### Step 0: Setup
 
-1. Derive `<feature>` slug from the user request (lowercase, hyphens, e.g. `add-csv-export`)
-2. Create directory `.spipe/<feature>/`
-3. Create `.spipe/<feature>/state.md` with the initial template (see State File Format below)
+1. Complete the isolated-session preflight and record its exact identities.
+2. Derive `<feature>` slug from the user request (lowercase, hyphens, e.g. `add-csv-export`)
+3. Create directory `.spipe/<feature>/` in the owned linked worktree.
+4. Create `.spipe/<feature>/state.md` with the initial template (see State File Format below)
 
 ### Step 1: Dev (inline -- do NOT spawn agent)
 
@@ -163,6 +178,15 @@ Create `.spipe/<feature>/state.md` with this template:
 
 ```markdown
 # SStack State: <feature>
+
+## VCS Session
+- Owner: <owner>
+- Session ID: <session-id>
+- Worktree path: <absolute non-main linked worktree>
+- Work branch: work/<session>
+- Target ref: <protected target>
+- Base commit: <exact commit>
+- Expected target commit: <exact commit>
 
 ## User Request
 > <original user request verbatim>

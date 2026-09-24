@@ -14,6 +14,8 @@
 | [`llm_finetune.md`](llm_finetune.md) | LLM fine-tune and retry loop for LLM-backed app/server development |
 | [`llm_model_research.md`](llm_model_research.md) | Base model research and architecture decision checklist |
 | [`llm_finetune_attempt_template.sdn`](llm_finetune_attempt_template.sdn) | Attempt record template |
+| [`review_admission.md`](review_admission.md) | Operator guide for broker-verified review and scoped self-review admission |
+| [`self_review_skill.md`](self_review_skill.md) | Canonical self-review guidance projected into Claude, Codex, Gemini, Pipe, and plugin skills |
 
 ## Skill entry-point
 

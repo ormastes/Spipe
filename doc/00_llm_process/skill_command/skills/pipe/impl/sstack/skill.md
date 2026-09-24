@@ -1,4 +1,4 @@
-<!-- llm-process-gen: managed source=pipe_impl_sstack_skill source_sha256=18d16a12ffb4c4cab1582f0bdc44e85660433a64a71fe38e63743698ed5571b1 content_sha256=18d16a12ffb4c4cab1582f0bdc44e85660433a64a71fe38e63743698ed5571b1 -->
+<!-- generated-from: SStack orchestrator plus isolated VCS session policy -->
 ---
 name: sstack
 description: SStack 8-phase BDD/TDD pipeline orchestrator with cooperative workflow (Codex/Gemini fallback). Use for any dev task — /dev is an alias.
@@ -19,6 +19,18 @@ SStack is a full-lifecycle development pipeline that combines three frameworks:
 ```
 
 `/dev` is an alias for `/sstack`. Both run the same 8-phase pipeline.
+
+## Isolated session preflight
+
+Before Phase 1, read
+`doc/00_llm_process/skill_command/vcs_session_policy.md`. Create or verify one
+session-owned `work/*` branch in one linked worktree physically separate from
+the protected main worktree. Record owner, session ID, worktree path, work
+branch, target ref, base commit, and expected target commit in the state file.
+Stop on a protected/main workspace, stale target, ownership mismatch, or
+unrelated dirty work. Phase 8 pushes only the owned work ref with exact
+lease/CAS and submits its exact head through the PR/integration authority; no
+development phase directly moves a protected ref or release tag.
 
 ## How It Works
 

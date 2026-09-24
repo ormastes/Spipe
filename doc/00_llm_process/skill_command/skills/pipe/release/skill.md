@@ -1,142 +1,81 @@
-<!-- llm-process-gen: managed source=pipe_release_skill source_sha256=8101a3f942cf7248127ec5931807a5fd55425fb7bfb11ea1aedfaa70a7a6551b content_sha256=8101a3f942cf7248127ec5931807a5fd55425fb7bfb11ea1aedfaa70a7a6551b -->
-# Release Skill
+<!-- generated-from: doc/00_llm_process/skill_command/command/release.md -->
+# Protected Software Release
 
-Perform a version bump and release of the Simple Language compiler.
+Release contract: isolated-session; reviewed-beta-backport; immutable-candidate; promote-without-rebuild; protected-ref-guard; non-destructive-release-identity.
 
-## Usage
+Use the canonical semantic source at `doc/00_llm_process/skill_command/command/release.md`.
 
-```
-/release              # patch bump (default): 0.9.2 → 0.9.3
-/release patch        # same as above
-/release third        # same as above
-/release minor        # minor bump: 0.9.2 → 0.10.0
-/release second       # same as above
-/release major        # major bump: 0.9.2 → 1.0.0
-/release first        # same as above
-/release 1.0.0        # set exact version
-```
+Start one isolated release branch/worktree, read `release/version.sdn`, and require verified evidence. Beta maintenance accepts only explicit reviewed bug-fix backports with exact provenance and renewed post-application evidence. Create an immutable candidate, build once, and promote exact admitted artifacts through one signed annotated exact tag after approval.
 
-## Procedure
+Never update protected refs directly, rebuild during promotion, select fixes automatically, push all tags, delete/move/reuse a published tag, or use fallback artifacts. Rollback redeploys a prior admitted release; corrections get a new version.
 
-Given argument: `$ARGUMENTS`
+## Normalized contract clauses
 
-### Step 1 — Determine new version
+- One isolated release session owns one work branch and one non-main worktree.
+- `release/version.sdn` is the sole version authority and all other version locations are checked projections.
+- Beta maintenance admits only caller-selected reviewed bug-fix commits with exact provenance and renewed result-revision evidence.
+- Bootstrap periodically performs read-only main-to-release convergence discovery and never selects or cherry-picks fixes automatically.
+- An approved release-first emergency fix requires an exact reviewed forward-port receipt to main.
+- Main remains the independent development trunk and never tracks or becomes a release branch.
+- Protected refs change only through exact-revision compare-and-swap integration authority.
+- Each changed source policy support or toolchain identity creates a new immutable candidate attempt.
+- Build and qualify the exact candidate once and reject required failures or fallback artifacts.
+- Promotion reuses admitted artifacts without rebuilding and pushes exactly one signed annotated tag.
+- Release admission requires focused failures to reach zero followed by one clean whole-suite confirmation.
+- Withdrawal preserves published tags assets and history and corrections use a new version.
 
-1. Read current version from `simple.sdn` (field `project.version`, line 6)
-2. Parse argument:
-   - Empty, `patch`, or `third` → increment patch (Z+1)
-   - `minor` or `second` → increment minor (Y+1), reset patch to 0
-   - `major` or `first` → increment major (X+1), reset minor and patch to 0
-   - Pattern `X.Y.Z` (digits.digits.digits) → use as-is
-   - Anything else → error, show usage
-3. Print: `Version bump: {old} → {new}`
+<!-- spipe-self-review-guidance:begin -->
+## SPipe self-review admission
 
-### Step 2 — Update all version locations
+GitHub forbids a pull-request author from submitting an `APPROVED` review on
+their own pull request. Do not retry or claim a provider approval. SPipe uses a
+different merge gate: the pinned broker emits the short-lived required check
+`SPipe Self Review Admission` for one exact head, base, diff, and ruleset.
 
-Update these 4 files with the new version:
+If an agent asks to **self approve**, **approve PR**, or says the **author
+cannot approve**, run the one discovery command `spipe self-review-guide` (or
+`node cli/spipe.js self-review-guide` from this checkout). Then follow this
+exact workflow:
 
-| File | What to change |
-|------|---------------|
-| `simple.sdn` | `version: X.Y.Z` (line 6) |
-| `VERSION` | Entire file content: `X.Y.Z\n` |
-| `src/app/cli/main.spl` | Hardcoded fallback string `"X.Y.Z"` in `get_version()` |
-| `src/app/cli/bootstrap_main.spl` | Hardcoded string `"X.Y.Z"` in `bootstrap_version()` |
+1. Before review, capture the live PR head as `HEAD_SHA`. Perform a `high`,
+   `xhigh`, `max`, or `ultra` review of that captured SHA. Record the session, model, effort, verdict, and
+   finding counts; continue only for `PASS` with `P0=0` and `P1=0`.
+2. Choose one protected implementation. Generic SPipe MCP callers invoke
+   `spipe_self_review_privilege_evaluate` and, only on allow, invoke
+   `spipe_self_review_approve` with the same closed request. A Simple-hosted
+   repository instead lets its trusted default-branch workflow perform that
+   policy resolution. Do not combine or reorder these two paths.
+3. For Simple, capture before the review with `HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo ormastes/simple --json headRefOid --jq .headRefOid)`. Dispatch only through a configured broker that authenticates a canonical v2 policy DB and an exact higher-model receipt. If the workflow offers only a `self_attestation` input, stop: that legacy path cannot supply broker-signed evidence and must not emit admission.
+4. Poll only `repos/ormastes/simple/commits/$HEAD_SHA/check-runs?check_name=SPipe%20Self%20Review%20Admission`, and re-check that the PR still has
+   `HEAD_SHA`; never accept another SHA.
+5. If the provider rejects author `APPROVE`, or the actor and author are the
+   same, print these steps instead of retrying. A rejection, policy denial,
+   stale head, failed check, or missing protected workflow is a blocker.
 
-### Step 3 — Update CHANGELOG
+Eligibility is not automatic authorization. The closed request must carry a
+current user-authorization actor, timestamp, and receipt digest, and the broker
+must authenticate and repeat that evidence. Ordinary reviewed code/text is
+default-eligible only after that proof; operator `deny`/`constrain` records and
+fixed secret/ruleset/signing/review-authority restrictions always win.
+The external policy database must be the closed
+`spipe-self-review-policy-db/2` JSONL contract. Both incompatible v1 shapes and
+caller `self_attested` evidence fail closed; missing authority, TTL, nested
+identity, canonical UTC validity, or higher-model receipt facts are never
+inferred. The broker must also load separate `spipe-self-review-policy-trust/1`
+with the pinned authority, Ed25519 public key, and exact whole-database digest;
+self-declared keys, invalid signatures, duplicate JSON keys, invalid UTF-8/BOM,
+record replacement, or tail truncation reject the database.
 
-Insert a new section at the top of `CHANGELOG.md` (after the `# Changelog` header and description line):
+Constrain scopes are `code`, `text`, exact `file`, immediate
+`directory_files`, and recursive `directory_recursive`. Admission binds its
+expiry and requires the broker to register fail-closed check invalidation on
+bound-input change or expiry. A new push, base or merge-base movement, diff
+change, retarget, ruleset/policy/review/user-authorization receipt change, or
+expiry requires a fresh exact-head review, authorization, and evaluation.
 
-```markdown
-## [X.Y.Z] - YYYY-MM-DD
-
-### Added
-
-### Fixed
-
-### Changed
-```
-
-Use today's date. Keep existing entries below.
-
-### Step 4 — Commit
-
-```bash
-jj commit -m "chore: release vX.Y.Z"
-```
-
-### Step 5 — Tag
-
-```bash
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
-```
-
-### Step 6 — Ask before push
-
-Show the user what will happen and ask for confirmation before running:
-
-```bash
-jj bookmark set main -r @- && jj git push --bookmark main
-git push origin vX.Y.Z
-```
-
-Do NOT push without explicit user approval.
-
----
-
-## Release Types
-
-| Type | Format | Example |
-|------|--------|---------|
-| Stable | `vX.Y.Z` | `v1.0.0` |
-| RC | `vX.Y.Z-rc.N` | `v1.0.0-rc.1` |
-| Beta | `vX.Y.Z-beta.N` | `v1.0.0-beta.1` |
-| Alpha | `vX.Y.Z-alpha.N` | `v1.0.0-alpha.1` |
-
-## Pre-Release Checklist
-
-- [ ] `bin/simple test` passing
-- [ ] `bin/simple build lint` clean
-- [ ] `bin/simple todo-scan` — no critical TODOs
-- [ ] Local bootstrap build works (3-stage)
-- [ ] No orphan jj commits (`jj log` shows clean history)
-
-## GitHub Actions Release Pipeline
-
-Triggered by: git tag `v*.*.*` push or `workflow_dispatch` (manual).
-
-| Job | What | Platforms |
-|-----|------|-----------|
-| `check-version` | Detect version from `simple.sdn` | ubuntu |
-| `llvm-cross` | LLVM cross-compilation prep | reusable workflow |
-| `build-bootstrap` | Build per-platform packages | 13 platforms |
-| `build-full` | Full source+binary package | ubuntu |
-| `create-release` | GitHub Release with assets | ubuntu |
-| `publish-ghcr` | Publish to GHCR via ORAS | ubuntu |
-
-## Post-Release
-
-```bash
-# Monitor
-gh run list --workflow=release.yml --limit 3
-gh run watch <run-id>
-# Verify
-gh release view vX.Y.Z
-```
-
-## Apply Release Binary Locally
-
-```bash
-gh release download vX.Y.Z --pattern "*-darwin-arm64.spk" --dir /tmp
-cd /tmp && tar xzf simple-bootstrap-*-darwin-arm64.spk
-cp simple-bootstrap-*/bin/simple ~/simple/bin/release/aarch64-apple-darwin-macho/simple
-chmod +x ~/simple/bin/release/aarch64-apple-darwin-macho/simple
-bin/simple --version
-```
-
-## Rollback
-
-```bash
-gh release delete vX.Y.Z --yes
-git tag -d vX.Y.Z
-git push origin :refs/tags/vX.Y.Z
-```
+On the generic MCP path, call `spipe_self_review_privilege_evaluate` first. On deny, report its exact
+`reason_code`, matched policy/restriction IDs, affected paths, and
+`remediation`; never bypass or weaken the gate. On allow, call the
+compatibility-named `spipe_self_review_approve`, which emits only the SPipe
+status check and never a GitHub pull-request approval.
+<!-- spipe-self-review-guidance:end -->

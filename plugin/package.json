@@ -1,0 +1,10 @@
+{
+  "name": "@simple-lang/spipe-codex-plugin",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
+}
