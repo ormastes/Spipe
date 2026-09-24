@@ -34,6 +34,9 @@ checkout.
   — design and migration decisions.
 - [Windows host, antivirus, and install/deploy](../doc/00_llm_process/tool_expert/windows_host_antivirus/skill.md)
   — scoped Defender exclusions, third-party AV limits, end-user signing.
+- [Local CI receipt signing](../doc/00_llm_process/tool_expert/local_ci_receipt_signing/skill.md)
+  — sign-locally/skip-server-recheck pattern, the decision/execution trust
+  split, per-host signer enrollment, and the saturated-queue limit.
 
 Compatibility skill trees under `plugin/skills/` and
 `doc/00_llm_process/skill_command/skills/` remain valid until all consumers
