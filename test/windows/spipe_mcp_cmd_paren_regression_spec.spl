@@ -1,0 +1,79 @@
+# # spipe-mcp.cmd / spipe.cmd paren-in-echo parser regression (Windows)
+#
+# Regression for a real cmd.exe bug found running bin/spipe-mcp.cmd on a
+# real Windows host for the first time (2026-09-24): the runtime-discovery
+# error message `echo error: no Simple runtime found (set SPIPE_SIMPLE to a
+# simple binary) 1>&2` contained an UNESCAPED parenthesis pair nested inside
+# an `if not exist (...) ... )` block. cmd.exe's block-parser counts every
+# `(`/`)` character while scanning for the block's closing paren, including
+# ones inside an `echo` argument string, so the extra pair broke matching for
+# the whole three-block runtime-discovery chain: even when SIMPLE_RUNTIME
+# pointed at a real, existing binary, the wrapper unconditionally fell into
+# the "no Simple runtime found" branch and exited 127. Fixed by escaping the
+# parens (`^(` / `^)`) in bin/spipe-mcp.cmd and bin/spipe.cmd. This spec pins
+# both cmd files against a syntactic reintroduction of literal, unescaped
+# `(`/`)` inside any echo body that lives inside a parenthesized if-block, and
+# (@tag:windows-only) exercises the real wrapper end to end when cmd.exe is
+# available.
+
+use std.spec
+use std.process.{run}
+use std.fs.{read_file}
+use std.io_runtime.{env_get_opt}
+
+fn spipe_root() -> text:
+    env_get_opt("SPIPE_MIGRATION_ROOT") ?? "/Users/ormastes/simple/.spipe/spipe-migration"
+
+fn has_unescaped_parens_inside_if_block(src: text) -> bool:
+    # Minimal structural check: for every physical line that both (a) sits
+    # inside an `if ... (` block (tracked by a naive paren-depth counter
+    # seeded at each `if` keyword) and (b) is an `echo` line, the line must
+    # not itself contain a *literal* `(` or `)` — those must be escaped as
+    # `^(`/`^)` or the block-parser miscounts, as happened in the incident
+    # this spec pins.
+    val lines = src.split("\n")
+    var depth = 0
+    var i = 0
+    while i < lines.len():
+        val line = lines[i]
+        val trimmed = line.trim()
+        if trimmed.starts_with("echo") and depth > 0:
+            # Strip escaped parens before counting literal ones.
+            val stripped = trimmed.replace("^(", "").replace("^)", "")
+            if stripped.contains("(") or stripped.contains(")"):
+                return true
+        if trimmed.contains(" (") or trimmed.ends_with("("):
+            depth = depth + 1
+        if trimmed == ")" or trimmed.starts_with(") "):
+            depth = depth - 1
+        i = i + 1
+    false
+
+describe "spipe-mcp.cmd / spipe.cmd echo-inside-if-block parenthesis safety":
+    it "bin/spipe-mcp.cmd has no unescaped parens inside an echo nested in an if-block":
+        val root = spipe_root()
+        val src = read_file(root + "/bin/spipe-mcp.cmd")
+        expect(has_unescaped_parens_inside_if_block(src)).to_equal(false)
+
+    it "bin/spipe.cmd has no unescaped parens inside an echo nested in an if-block":
+        val root = spipe_root()
+        val src = read_file(root + "/bin/spipe.cmd")
+        expect(has_unescaped_parens_inside_if_block(src)).to_equal(false)
+
+    it "@tag:windows-only bin/spipe-mcp.cmd answers initialize when a Simple runtime is admitted":
+        val root = spipe_root()
+        val simple_runtime = env_get_opt("SPIPE_TEST_SIMPLE_RUNTIME") ?? ""
+        if simple_runtime == "":
+            # No Windows Simple runtime configured for this run — nothing to
+            # exercise end to end; the structural checks above still cover
+            # the regression on any host.
+            expect(true).to_equal(true)
+        else:
+            val cmd = "SPIPE_SIMPLE=\"" + simple_runtime + "\" cmd //c \"" + root.replace("/", "\\") +
+                "\\bin\\spipe-mcp.cmd\" < /dev/null"
+            val r = run("/bin/sh", ["-c",
+                "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}' | " +
+                "SPIPE_SIMPLE=\"" + simple_runtime + "\" cmd //c \"" + root.replace("/", "\\") + "\\bin\\spipe-mcp.cmd\""])
+            expect(r.exit_code).to_equal(0)
+            expect(r.stdout.contains("\"protocolVersion\":\"2024-11-05\"")).to_equal(true)
+            expect(r.stdout.contains("\"error\":")).to_equal(false)
