@@ -32,6 +32,8 @@ checkout.
   Codex, Gemini, and MCP discovery contract.
 - [Knowledge-system research](../doc/00_llm_process/knowledge/research/spipe_workspace_ownership_llm_wiki_2026-09-09.md)
   — design and migration decisions.
+- [Windows host, antivirus, and install/deploy](../doc/00_llm_process/tool_expert/windows_host_antivirus/skill.md)
+  — scoped Defender exclusions, third-party AV limits, end-user signing.
 
 Compatibility skill trees under `plugin/skills/` and
 `doc/00_llm_process/skill_command/skills/` remain valid until all consumers
