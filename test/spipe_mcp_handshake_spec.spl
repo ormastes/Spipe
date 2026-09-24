@@ -1,0 +1,93 @@
+# # SPipe MCP handshake spec (Simple build, stage 1)
+#
+# Scripted JSON-RPC handshake against bin/spipe-mcp: initialize,
+# notifications/initialized, tools/list, and tools/call spipe_info. The
+# advertised tool list must equal the Node server's list (modulo the response
+# id), and the spipe://skill resource must round-trip.
+
+use std.spec
+use std.process.{run}
+use std.io_runtime.{env_get_opt}
+
+fn migration_root() -> text:
+    env_get_opt("SPIPE_MIGRATION_ROOT") ?? "/Users/ormastes/simple/.spipe/spipe-migration"
+
+fn handshake_input() -> text:
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n" +
+        "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":{}}\n" +
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}\n" +
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"spipe_info\",\"arguments\":{}}}\n"
+
+fn node_tools_list() -> text:
+    val root = migration_root()
+    val msg = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}"
+    val r = run("/bin/sh", ["-c", "printf '%s\n' '" + msg + "' | node '" + root + "/mcp/server.js'"])
+    expect(r.exit_code).to_equal(0)
+    r.stdout
+
+describe "SPipe MCP Simple handshake":
+    it "answers initialize with spipe serverInfo and 2024-11-05 protocol":
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "printf '%s\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}' | '" + root + "/bin/spipe-mcp'"])
+        expect(r.exit_code).to_equal(0)
+        expect(r.stdout.contains("\"protocolVersion\":\"2024-11-05\"")).to_equal(true)
+        expect(r.stdout.contains("\"serverInfo\":{\"name\":\"spipe\",\"version\":\"0.2.0\"}")).to_equal(true)
+        expect(r.stdout.contains("\"error\":")).to_equal(false)
+
+    it "returns the full tools/list including ported and Node-only tools":
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "printf '%s\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}' | '" + root + "/bin/spipe-mcp'"])
+        expect(r.exit_code).to_equal(0)
+        expect(r.stdout.contains("\"name\":\"spipe_info\"")).to_equal(true)
+        expect(r.stdout.contains("\"name\":\"spipe_experts\"")).to_equal(true)
+        expect(r.stdout.contains("\"name\":\"spipe_read_doc\"")).to_equal(true)
+        expect(r.stdout.contains("\"name\":\"spipe_fine_tune_guide\"")).to_equal(true)
+        expect(r.stdout.contains("\"name\":\"spipe_release_promotion_plan\"")).to_equal(true)
+        expect(r.stdout.contains("\"name\":\"spipe_self_review_approve\"")).to_equal(true)
+        expect(r.stdout.contains("\"error\":")).to_equal(false)
+
+    it "advertises exactly the same tool list as the Node server":
+        val have_node = run("/bin/sh", ["-c", "command -v node >/dev/null 2>&1"])
+        if have_node.exit_code != 0:
+            skip("node runtime not available")
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "printf '%s\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}' | '" + root + "/bin/spipe-mcp'"])
+        expect(r.exit_code).to_equal(0)
+        expect(r.stdout.trim() == node_tools_list().trim()).to_equal(true)
+
+    it "completes initialize + initialized + tools/list + spipe_info over one session":
+        val root = migration_root()
+        val tmp = "/tmp/spipe_mcp_handshake_input.txt"
+        val wr = run("/bin/sh", ["-c", "printf '%s' '" + handshake_input() + "' > '" + tmp + "'"])
+        expect(wr.exit_code).to_equal(0)
+        val r = run("/bin/sh", ["-c", "cat '" + tmp + "' | '" + root + "/bin/spipe-mcp'"])
+        expect(r.exit_code).to_equal(0)
+        val lines = r.stdout.split("\n")
+        expect(lines.len() >= 3).to_equal(true)
+        expect(r.stdout.contains("\"protocolVersion\":\"2024-11-05\"")).to_equal(true)
+        expect(r.stdout.contains("\"name\":\"spipe_info\"")).to_equal(true)
+        expect(r.stdout.contains("module=" + root)).to_equal(true)
+        expect(r.stdout.contains("surface=doc/00_llm_process/spipe")).to_equal(true)
+        expect(r.stdout.contains("\"error\":")).to_equal(false)
+
+    it "serves the spipe://skill resource":
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "printf '%s\n' '{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"resources/read\",\"params\":{\"uri\":\"spipe://skill\"}}' | '" + root + "/bin/spipe-mcp'"])
+        expect(r.exit_code).to_equal(0)
+        expect(r.stdout.contains("\"uri\":\"spipe://skill\"")).to_equal(true)
+        expect(r.stdout.contains("SPipe Test Writing Skill")).to_equal(true)
+        expect(r.stdout.contains("\"error\":")).to_equal(false)
+
+    it "rejects unknown tools with the Node-compatible -32000 error":
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "printf '%s\n' '{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"no_such\",\"arguments\":{}}}' | '" + root + "/bin/spipe-mcp'"])
+        expect(r.exit_code).to_equal(0)
+        expect(r.stdout.contains("\"code\":-32000")).to_equal(true)
+        expect(r.stdout.contains("unknown tool: no_such")).to_equal(true)
+
+    it "fails closed on unported release tools with a not-yet-ported error":
+        val root = migration_root()
+        val r = run("/bin/sh", ["-c", "printf '%s\n' '{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"spipe_release_capabilities\",\"arguments\":{}}}' | '" + root + "/bin/spipe-mcp'"])
+        expect(r.exit_code).to_equal(0)
+        expect(r.stdout.contains("\"code\":-32000")).to_equal(true)
+        expect(r.stdout.contains("not yet ported")).to_equal(true)

@@ -1,0 +1,254 @@
+# SPipe CLI — Simple build (stage 1 of the Simple-language migration).
+#
+# Ports the core read-only subcommands of cli/spipe.js with byte-identical
+# stdout: info, experts, link-plan, doc-root, doc-link, doctor, skill,
+# fine-tune-guide, fine-tune-model-guide, fine-tune-template.
+#
+# Everything else (the release-*/review-*/self-review-* planning family and the
+# remaining fine-tune-* commands) is still provided by the Node build; those
+# subcommands fail closed here with exit 3 and a pointer to the Node CLI, so a
+# scripted caller never silently gets different behavior from the Simple build.
+
+use std.io_runtime.{get_args, dir_create_all}
+use std.nogc_sync_mut.io.stderr_ops.{stderr_write, stderr_flush}
+use .core
+
+fn sp_err_line(s: text):
+    stderr_write(s + "\n")
+    stderr_flush()
+
+fn sp_print_usage():
+    sp_out_line("Usage: spipe <command> [args] (Simple build, stage 1)")
+    sp_out_line("Ported: info, experts, link-plan, doc-root, doc-link, doctor, skill,")
+    sp_out_line("        fine-tune-guide, fine-tune-model-guide, fine-tune-template")
+    sp_out_line("All other commands: not yet ported in Simple build; use: node cli/spipe.js <args>")
+
+# --- Ported commands ---
+
+fn sp_cmd_info(root: text):
+    sp_out_line("spipe_module=" + root)
+    sp_out_line("spipe_skill=" + sp_join(root, "doc/00_llm_process/spipe/skill.md"))
+    for surface in sp_surfaces():
+        sp_out_line("surface=doc/00_llm_process/" + surface)
+
+fn sp_cmd_experts(root: text):
+    for name in ["project_expert", "domain_expert", "tool_expert"]:
+        val dirs = sp_list_dirs(sp_join(root, "doc/00_llm_process/" + name))
+        var value = "(none)"
+        if dirs.len() > 0:
+            value = dirs.join(",")
+        sp_out_line(name + "=" + value)
+
+fn sp_cmd_link_plan(root: text, host_arg: text):
+    var host = host_arg
+    if host == "":
+        host = sp_default_host(root)
+    host = sp_normalize(host)
+    for item in sp_link_plan(root, host):
+        val (surface, source, target) = item
+        sp_out_line(surface)
+        sp_out_line("  source=" + source)
+        sp_out_line("  target=" + target)
+
+fn sp_cmd_doc_root(root: text, host_arg: text):
+    var host = host_arg
+    if host == "":
+        host = sp_default_host(root)
+    sp_out_line(sp_doc_root_from_config(sp_normalize(host)))
+
+fn sp_cmd_doc_link(root: text, host_arg: text, doc_root_arg: text) -> i64:
+    var host = host_arg
+    if host == "":
+        host = sp_default_host(root)
+    host = sp_normalize(host)
+    var configured = doc_root_arg
+    if configured == "":
+        configured = sp_doc_root_from_config(host)
+    val doc_abs = sp_normalize(sp_join(host, configured))
+    val link_path = sp_join(host, ".spipe/doc")
+
+    if not sp_path_exists(doc_abs):
+        sp_err_line("spipe doc-link: doc root does not exist: " + configured)
+        return 1
+
+    dir_create_all(sp_join(host, ".spipe"))
+    val next_target = sp_relative(sp_join(host, ".spipe"), doc_abs)
+
+    if sp_is_symlink(link_path):
+        val current = sp_read_link(link_path)
+        if sp_is_windows():
+            # Junction readback is not ported; refresh it unconditionally.
+            sp_remove_link(link_path)
+        elif current == next_target:
+            sp_out_line("doc_link=ok " + link_path + " -> " + current)
+            return 0
+        else:
+            sp_remove_link(link_path)
+    elif sp_path_exists(link_path):
+        sp_err_line("spipe doc-link: refusing to replace non-symlink: " + link_path)
+        return 1
+
+    if not sp_make_symlink(next_target, link_path):
+        sp_err_line("spipe doc-link: failed to create link: " + link_path)
+        return 1
+    sp_out_line("doc_link=linked " + link_path + " -> " + next_target)
+    0
+
+fn sp_cmd_doctor(root: text, host_arg: text) -> i64:
+    var host = host_arg
+    if host == "":
+        host = sp_default_host(root)
+    host = sp_normalize(host)
+    var failures: i64 = 0
+
+    for surface in sp_surfaces():
+        val source = sp_join(root, "doc/00_llm_process/" + surface)
+        if sp_path_exists(source):
+            sp_out_line("source_ok doc/00_llm_process/" + surface)
+        else:
+            failures = failures + 1
+            sp_out_line("missing_source doc/00_llm_process/" + surface)
+
+    for item in sp_link_plan(root, host):
+        val (surface, _source, target) = item
+        if not sp_path_exists(target):
+            sp_out_line("target_missing " + surface)
+            continue
+        var kind = "file"
+        if sp_is_symlink(target):
+            kind = "link"
+        elif dir_exists(target):
+            kind = "directory"
+        sp_out_line("target_" + kind + " " + surface)
+
+    val doc_root = sp_doc_root_from_config(host)
+    val dot_spipe = sp_join(host, ".spipe")
+    val doc_link = sp_join(dot_spipe, "doc")
+    val doc_target = sp_relative(dot_spipe, sp_normalize(sp_join(host, doc_root)))
+    val spipe_dir = sp_join(host, ".spipe/spipe")
+    val examples_spipe = sp_join(host, "examples/spipe")
+    val host_checks: [(text, text, text)] = [
+        ("compatibility_submodule", spipe_dir, "exists"),
+        ("example_project_submodule", examples_spipe, "exists"),
+        ("spipe_project_link", sp_join(dot_spipe, "spipe_project"), sp_relative(dot_spipe, examples_spipe)),
+        ("doc_link", doc_link, doc_target),
+        ("domain_expert_link", sp_join(dot_spipe, "domain_expert"), sp_relative(dot_spipe, sp_join(examples_spipe, "doc/00_llm_process/domain_expert"))),
+        ("template_link", sp_join(dot_spipe, "template"), sp_relative(dot_spipe, sp_join(examples_spipe, "doc/00_llm_process/template"))),
+        ("spipe_docs_link", sp_join(dot_spipe, "spipe_docs"), sp_relative(dot_spipe, sp_join(examples_spipe, "doc/00_llm_process/spipe"))),
+        ("project_expert_spipe_link", sp_join(dot_spipe, "project_expert/spipe"), sp_relative(sp_join(dot_spipe, "project_expert"), sp_join(examples_spipe, "doc/00_llm_process/project_expert/simple"))),
+        ("tool_expert_spipe_link", sp_join(dot_spipe, "tool_expert/spipe_submodule"), sp_relative(sp_join(dot_spipe, "tool_expert"), sp_join(examples_spipe, "doc/00_llm_process/tool_expert/spipe_submodule")))
+    ]
+    for check in host_checks:
+        val (name, path, expected) = check
+        if not sp_path_exists(path):
+            failures = failures + 1
+            sp_out_line("host_missing " + name + " " + path)
+            continue
+        if expected != "exists":
+            if not sp_is_symlink(path):
+                failures = failures + 1
+                sp_out_line("host_not_link " + name + " " + path)
+                continue
+            val current = sp_read_link(path)
+            if current != expected:
+                failures = failures + 1
+                sp_out_line("host_bad_link " + name + " expected=" + expected + " actual=" + current)
+                continue
+        sp_out_line("host_ok " + name)
+
+    if failures == 0:
+        sp_out_line("spipe_doctor=pass")
+    else:
+        sp_out_line("spipe_doctor=fail missing=" + failures.to_string())
+    if failures == 0:
+        return 0
+    1
+
+fn sp_cmd_print_doc(root: text, rel: text):
+    sp_out_raw(file_read(sp_join(root, rel)))
+
+# --- Dispatch ---
+
+fn sp_not_ported(command: text, args: [text]):
+    var msg = "not yet ported in Simple build; use: node cli/spipe.js " + command
+    for arg in args:
+        msg = msg + " " + arg
+    sp_err_line(msg)
+    exit(3)
+
+fn sp_is_fine_tune(command: text) -> bool:
+    command.starts_with("fine-tune-")
+
+fn sp_is_unported(command: text) -> bool:
+    if sp_is_fine_tune(command):
+        return command != "fine-tune-guide" and command != "fine-tune-model-guide" and command != "fine-tune-template"
+    if command.starts_with("release-"):
+        return true
+    if command.starts_with("review-"):
+        return true
+    if command.starts_with("self-review-"):
+        return true
+    false
+
+fn sp_arg_at(args: [text], index: i64) -> text:
+    if index >= 0 and index < args.len():
+        return args[index]
+    ""
+
+fn main():
+    val root = sp_module_root()
+    val args = get_args()
+    var command = ""
+    var rest: [text] = []
+    var i = 1
+    while i < args.len():
+        if i == 1:
+            command = args[i]
+        else:
+            rest.push(args[i])
+        i = i + 1
+
+    if command == "" or command == "--help" or command == "-h":
+        sp_print_usage()
+        exit(0)
+    if command == "--version" or command == "-v":
+        sp_out_line(sp_version(root))
+        exit(0)
+
+    if sp_is_unported(command):
+        sp_not_ported(command, rest)
+
+    if command == "info":
+        sp_cmd_info(root)
+        exit(0)
+    if command == "experts":
+        sp_cmd_experts(root)
+        exit(0)
+    if command == "link-plan":
+        sp_cmd_link_plan(root, sp_arg_at(rest, 0))
+        exit(0)
+    if command == "doc-root":
+        sp_cmd_doc_root(root, sp_arg_at(rest, 0))
+        exit(0)
+    if command == "doc-link":
+        exit(sp_cmd_doc_link(root, sp_arg_at(rest, 0), sp_arg_at(rest, 1)))
+    if command == "doctor":
+        exit(sp_cmd_doctor(root, sp_arg_at(rest, 0)))
+    if command == "skill":
+        sp_cmd_print_doc(root, "doc/00_llm_process/spipe/skill.md")
+        exit(0)
+    if command == "fine-tune-guide":
+        sp_cmd_print_doc(root, "doc/00_llm_process/spipe/llm_finetune.md")
+        exit(0)
+    if command == "fine-tune-model-guide":
+        sp_cmd_print_doc(root, "doc/00_llm_process/spipe/llm_model_research.md")
+        exit(0)
+    if command == "fine-tune-template":
+        sp_cmd_print_doc(root, "doc/00_llm_process/spipe/llm_finetune_attempt_template.sdn")
+        exit(0)
+
+    sp_err_line("spipe: unknown command: " + command)
+    sp_print_usage()
+    exit(2)
+
+main()

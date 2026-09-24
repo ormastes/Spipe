@@ -38,6 +38,39 @@ such as `.spipe/doc`, `.spipe/spipe_project`, `.spipe/spipe`, and
 When installed as an npm-style package, the binaries are `spipe` and
 `spipe-mcp`.
 
+### Runtime requirements (Simple build)
+
+Stage 1 of the Simple-language migration ports the executable surfaces to
+Simple:
+
+- `bin/spipe` / `bin/spipe.cmd` run `src/spipe_cli/main.spl`, porting the core
+  subcommands (`info`, `experts`, `link-plan`, `doc-root`, `doc-link`,
+  `doctor`, `skill`, `fine-tune-guide`, `fine-tune-model-guide`,
+  `fine-tune-template`) with byte-identical stdout. Any other subcommand
+  (release/review planning, remaining fine-tune family) exits 3 with a pointer
+  to the Node CLI.
+- `bin/spipe-mcp` / `bin/spipe-mcp.cmd` run `src/spipe_mcp/main.spl`, an
+  MCP stdio server with the same tool advertisement as `mcp/server.js`; the
+  doc/read tools and the `spipe://skill` resource are native Simple, while the
+  release/review planning tools return a `-32000 not yet ported` error until
+  their stage lands.
+
+Both wrappers prefer an admitted native executable at
+`build/simple-bin/spipe{,-mcp}` (sha256 sidecar admission) and otherwise run
+the sources on a Simple runtime in interpreter mode. A runtime is discovered
+via, in order:
+
+1. the `SPIPE_SIMPLE` environment variable (path to a `simple` binary or to a
+   checkout containing `bin/simple`);
+2. `../../bin/simple` relative to this module (the host Simple checkout when
+   SPipe is mounted at `<host>/.spipe/spipe-migration`).
+
+`SIMPLE_LIB` is inherited or defaults to the host checkout's `src`. With no
+discoverable runtime the wrappers exit 127; the Node build remains the
+fallback for unported commands and for the full 27-tool MCP surface
+(`node cli/spipe.js …`, `node mcp/server.js`). `scripts/build.sh` skips the
+Simple smoke checks (without failing) when no runtime is present.
+
 Protected release operations include guarded local session mutation, but not
 protected-ref or publication authority. With `SPIPE_RELEASE_SESSION_TOKEN`
 configured, the CLI and MCP server can fetch an exact target, create one owned

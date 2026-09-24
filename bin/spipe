@@ -1,0 +1,129 @@
+#!/bin/sh
+# SPipe CLI wrapper (Simple build, stage 1).
+#
+# Resolution order:
+#   1. Admitted native exe at build/simple-bin/spipe, hash-checked against its
+#      build/simple-bin/spipe.sha256 sidecar (mklink/sha256 admission, same
+#      policy as bin/simple_mcp_server).
+#   2. Source fallback: the Simple interpreter runs src/spipe_cli/main.spl
+#      with SIMPLE_EXECUTION_MODE=interpreter (the Rust seed's JIT is not the
+#      supported path; see doc/08_tracking in a Simple host checkout).
+#
+# Runtime discovery: SPIPE_SIMPLE may name the Simple runtime binary (or a
+# directory containing bin/simple). Otherwise ../../bin/simple relative to
+# this worktree is tried, which is the host Simple checkout when SPipe lives
+# at <host>/.spipe/spipe-migration. SIMPLE_LIB is inherited or defaults to the
+# host's src. The interpreter resolves std.* from <project>/src/lib, so the
+# wrapper also links <worktree>/src/lib and <worktree>/src/std at the host src
+# when they are absent (runtime-created, never committed).
+set -eu
+
+script_dir="${0%/*}"
+if [ "${script_dir}" = "$0" ]; then
+  script_dir="."
+fi
+module_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
+entry="${module_root}/src/spipe_cli/main.spl"
+name="spipe"
+
+case "${1:-}" in
+  --version|-v)
+    if [ -f "${module_root}/release/version.sdn" ]; then
+      sed -n 's/^[[:space:]]*semver:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' \
+        "${module_root}/release/version.sdn" | head -n 1
+      exit 0
+    fi
+    ;;
+esac
+
+admit_native() {
+  exe="$1"
+  sidecar="${exe}.sha256"
+  [ -x "${exe}" ] || return 1
+  [ -f "${sidecar}" ] || return 1
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "${exe}" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "${exe}" | awk '{print $1}')"
+  else
+    return 1
+  fi
+  expected="$(awk '{print $1}' "${sidecar}" | head -n 1)"
+  [ -n "${actual}" ] && [ "${actual}" = "${expected}" ]
+}
+
+native="${module_root}/build/simple-bin/${name}"
+if admit_native "${native}"; then
+  export SPIPE_MODULE_ROOT="${module_root}"
+  exec "${native}" "$@"
+fi
+
+simple="${SPIPE_SIMPLE:-}"
+if [ -n "${simple}" ] && [ -d "${simple}" ]; then
+  simple="${simple}/bin/simple"
+fi
+if [ -z "${simple}" ] || [ ! -x "${simple}" ]; then
+  host_candidate="${module_root}/../../bin/simple"
+  if [ -x "${host_candidate}" ]; then
+    simple="$(CDPATH= cd -- "$(dirname -- "${host_candidate}")" && pwd)/simple"
+  fi
+fi
+if [ -z "${simple}" ] || [ ! -x "${simple}" ]; then
+  echo "error: no Simple runtime found (set SPIPE_SIMPLE to a simple binary)" >&2
+  echo "hint: Node fallback available: node cli/spipe.js $*" >&2
+  exit 127
+fi
+
+host_root="$(CDPATH= cd -- "$(dirname -- "${simple}")/.." && pwd)"
+if [ -d "${host_root}/src" ]; then
+  lib_root="${host_root}/src"
+else
+  lib_root="${SIMPLE_LIB:-}"
+fi
+created_links=""
+created_simple=""
+if [ ! -e "${module_root}/.simple" ]; then
+  created_simple="${module_root}/.simple"
+fi
+if [ -n "${lib_root}" ]; then
+  # The interpreter resolves std.* from <project>/src/lib; link the host stdlib
+  # in for the duration of this run and remove the links again afterwards so
+  # the module tree stays byte-identical (content-identity checks such as
+  # SPipe's own `diff -qr examples/spipe .spipe/spipe` must not see them).
+  if [ ! -e "${module_root}/src/lib" ] && [ -d "${lib_root}/lib" ]; then
+    if ln -s "${lib_root}/lib" "${module_root}/src/lib" 2>/dev/null; then
+      created_links="${module_root}/src/lib"
+    fi
+  fi
+  if [ ! -e "${module_root}/src/std" ] && [ -d "${lib_root}/std" ]; then
+    if ln -s "${lib_root}/std" "${module_root}/src/std" 2>/dev/null; then
+      created_links="${created_links} ${module_root}/src/std"
+    fi
+  fi
+fi
+
+export SIMPLE_LIB="${SIMPLE_LIB:-${lib_root}}"
+export SIMPLE_LOG="${SIMPLE_LOG:-error}"
+export SIMPLE_EXECUTION_MODE="${SIMPLE_EXECUTION_MODE:-interpreter}"
+export SPIPE_MODULE_ROOT="${module_root}"
+
+rc=0
+"${simple}" "${entry}" "$@" || rc=$?
+# Remove the stdlib links: any we created, plus any stale identical symlink
+# (a previous run may have been interrupted, and the .gitignore'd links must
+# never linger in the module tree).
+for link in ${created_links}; do
+  rm -f "${link}" 2>/dev/null || true
+done
+if [ -n "${lib_root}" ]; then
+  for name in lib std; do
+    link="${module_root}/src/${name}"
+    if [ -L "${link}" ] && [ "$(readlink "${link}" 2>/dev/null)" = "${lib_root}/${name}" ]; then
+      rm -f "${link}" 2>/dev/null || true
+    fi
+  done
+fi
+if [ -n "${created_simple}" ] && [ -d "${created_simple}" ]; then
+  rm -rf "${created_simple}" 2>/dev/null || true
+fi
+exit "${rc}"
