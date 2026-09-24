@@ -32,6 +32,8 @@ adapters use the same discovery and research contract.
 - [Common skills](../skills/index.md) — bootstrap, compatibility, and agent routes.
 - [Dated workspace research](../doc/00_llm_process/knowledge/research/spipe_workspace_ownership_llm_wiki_2026-09-09.md)
   — ownership-aware workspace and LLM-wiki design.
+- [Release task naming](release_naming.md) — stable release-task names;
+  failed retries append `_N` (`rc1_1`, `rc1_2`), never re-number the release.
 
 `doc/00_llm_process/knowledge/` remains normative documentation about the
 knowledge system. Its contents are classified individually before any migration.
