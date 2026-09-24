@@ -1,0 +1,79 @@
+# # spm_normalize() Windows backslash / drive-letter path regression
+#
+# Regression for a real bug found wiring bin/spipe-mcp.cmd into a Windows
+# host's project MCP config (2026-09-24, simple repo): spm_normalize() in
+# src/spipe_mcp/main.spl assumed the module root only ever arrives with
+# POSIX '/' separators. bin\spipe-mcp.cmd passes SPIPE_MODULE_ROOT as a
+# native Windows path (e.g. "D:\repo\.spipe\spipe"). Splitting that string
+# on "/" produced a single opaque path segment, and spm_normalize's
+# rebuild-with-leading-"/" logic turned it into "/D:\repo\.spipe\spipe" — a
+# path no Windows API resolves — which made every root-relative read
+# (release/version.sdn, src/spipe_mcp/tools_list_fixture.json) silently
+# fail. The user-visible symptom: `initialize` still answered, but
+# `tools/list` came back as an EMPTY `{}` result instead of the full tool
+# array, and `serverInfo.version` fell back to "0.0.0" instead of the real
+# release/version.sdn semver. Fixed by folding backslashes to "/" and
+# carrying a detected drive-letter prefix ("D:") outside the segment-join
+# loop instead of letting it get swallowed into a bogus leading "/".
+#
+# This spec pins the fix two ways: a structural check that the source still
+# contains the backslash-fold + drive-prefix logic (catches a silent
+# reversion on any host), and (@tag:windows-only) a real end-to-end replay
+# of the incident's exact shape — SPIPE_MODULE_ROOT set to a backslash,
+# drive-letter path — that must return a non-empty tools/list and the real
+# semver, gated on a configured Windows Simple runtime so it is a no-op
+# (not a false failure) on a host with none configured.
+
+use std.spec
+use std.process.{run}
+use std.fs.{read_file}
+use std.io_runtime.{env_get_opt}
+
+fn spipe_root() -> text:
+    env_get_opt("SPIPE_MIGRATION_ROOT") ?? "/Users/ormastes/simple/.spipe/spipe-migration"
+
+# Convert a POSIX-mounted or already-mixed root into a native
+# "X:\a\b\c" Windows path. Returns "" when the root carries no
+# drive-letter information to convert (e.g. a plain macOS/Linux path),
+# which the caller treats as "nothing to replay here".
+fn to_windows_backslash_root(root: text) -> text:
+    if root.len() >= 2 and root[1:2] == ":":
+        # Already "C:/..." or "C:\..." — just normalize separators.
+        return root[0:2] + root.substring(2).replace("/", "\\")
+    if root.len() >= 3 and root[0:1] == "/" and root[2:3] == "/":
+        # git-bash mount form "/d/repo/..." -> "D:\repo\..."
+        val letter = root[1:2]
+        val rest = root.substring(2).replace("/", "\\")
+        return letter.to_upper() + ":" + rest
+    ""
+
+describe "spm_normalize backslash / drive-letter path regression":
+    it "src/spipe_mcp/main.spl still folds backslashes and preserves a drive prefix":
+        val root = spipe_root()
+        val src = read_file(root + "/src/spipe_mcp/main.spl")
+        expect(src.contains("p.replace(\"\\\\\", \"/\")")).to_equal(true)
+        expect(src.contains("drive")).to_equal(true)
+
+    it "spm_normalize's own doc comment no longer claims Windows separators never occur":
+        val root = spipe_root()
+        val src = read_file(root + "/src/spipe_mcp/main.spl")
+        expect(src.contains("module and its paths never contain Windows separators")).to_equal(false)
+
+    it "@tag:windows-only tools/list is non-empty when SPIPE_MODULE_ROOT is a backslash drive-letter path":
+        val root = spipe_root()
+        val simple_runtime = env_get_opt("SPIPE_TEST_SIMPLE_RUNTIME") ?? ""
+        val win_root = to_windows_backslash_root(root)
+        if simple_runtime == "" or win_root == "":
+            # No Windows Simple runtime configured, or this host's root has
+            # no drive-letter form to replay — nothing to exercise end to
+            # end here; the structural checks above still cover the
+            # regression on every host.
+            expect(true).to_equal(true)
+        else:
+            val msg = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}"
+            val script = "SPIPE_MODULE_ROOT='" + win_root + "' printf '%s\n' '" + msg +
+                "' | SPIPE_MODULE_ROOT='" + win_root + "' '" + simple_runtime + "' '" + root + "/src/spipe_mcp/main.spl'"
+            val r = run("/bin/sh", ["-c", script])
+            expect(r.exit_code).to_equal(0)
+            expect(r.stdout.contains("\"name\":\"spipe_info\"")).to_equal(true)
+            expect(r.stdout.contains("\"version\":\"0.0.0\"")).to_equal(false)

@@ -31,10 +31,19 @@ fn spm_err(msg: text):
 
 # --- Paths ---
 
-# Collapse "." / ".." / duplicate slashes in an absolute path (POSIX; the
-# module and its paths never contain Windows separators in stage 1).
+# Collapse "." / ".." / duplicate slashes in an absolute path. Accepts both
+# POSIX and Windows separators: bin/spipe-mcp.cmd passes SPIPE_MODULE_ROOT as
+# a backslash path (e.g. "D:\repo\.spipe\spipe"), so backslashes are folded
+# to "/" before splitting, and a Windows drive prefix ("D:") is preserved
+# instead of being swallowed into a spurious leading "/" (previously
+# producing "/D:\repo\..." — a path no Windows API resolves).
 fn spm_normalize(p: text) -> text:
-    val raw = p.split("/")
+    var input = p.replace("\\", "/")
+    var drive = ""
+    if input.len() >= 2 and input[1:2] == ":":
+        drive = input.substring(0, 2)
+        input = input.substring(2)
+    val raw = input.split("/")
     var parts: [text] = []
     for piece in raw:
         if piece == "" or piece == ".":
@@ -53,7 +62,9 @@ fn spm_normalize(p: text) -> text:
     for piece in parts:
         out = out + "/" + piece
     if out == "":
-        return "/"
+        out = "/"
+    if drive != "":
+        return drive + out
     out
 
 fn spm_dirname(p: text) -> text:
