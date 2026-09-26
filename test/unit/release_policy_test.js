@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +71,30 @@ test("root version authority governs every root and plugin projection", () => {
   assert.match(manifest, /local_workspace_mutation: true/);
   assert.match(manifest, /protected_ref_mutation: false/);
   assert.match(manifest, /external_release_mutation: false/);
+});
+
+test("Codex plugin MCP command launches the packaged full server", () => {
+  const pluginRoot = join(root, "plugin");
+  const descriptor = JSON.parse(readFileSync(join(pluginRoot, ".codex-plugin/plugin.json"), "utf8"));
+  const server = descriptor.mcpServers.spipe;
+  assert.equal(server.command, "node");
+  assert.deepEqual(server.args, ["mcp/server.js"]);
+  const requests = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+    { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "spipe_self_review_guide", arguments: {} } }
+  ];
+  const run = spawnSync(server.command, server.args, {
+    cwd: pluginRoot,
+    input: `${requests.map(JSON.stringify).join("\n")}\n`,
+    encoding: "utf8",
+    timeout: 10_000
+  });
+  assert.equal(run.status, 0, run.stderr);
+  const replies = run.stdout.trim().split("\n").map(JSON.parse);
+  assert.equal(replies[0].result.serverInfo.name, "spipe");
+  assert.equal(replies[1].result.tools.length, 27);
+  assert.match(replies[2].result.content[0].text, /Self-Review/);
 });
 
 test("MCP validation errors preserve the request id", () => {
