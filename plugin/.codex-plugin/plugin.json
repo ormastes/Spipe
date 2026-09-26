@@ -9,9 +9,9 @@
   "skills": "./skills/",
   "mcpServers": {
     "spipe": {
-      "command": "bin/spipe-mcp",
-      "args": ["mcp"],
-      "_info": "Simple build (stage 1): bin/spipe-mcp serves the ported tools (spipe_info, spipe_experts, spipe_read_doc, spipe_fine_tune_*, spipe_self_review_guide, spipe_release_guide) plus spipe://skill; the release/review planning tool family returns a -32000 'not yet ported' error. Requires a Simple runtime (SPIPE_SIMPLE override; see README 'Runtime requirements'). Node fallback for the full 27-tool surface: `node mcp/server.js`."
+      "command": "node",
+      "args": ["mcp/server.js"],
+      "_info": "Launch the packaged Node MCP server from the plugin root. It exposes the full 27-tool SPipe surface and spipe://skill resource."
     }
   },
   "interface": {
