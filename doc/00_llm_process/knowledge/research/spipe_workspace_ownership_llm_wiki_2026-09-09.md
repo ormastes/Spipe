@@ -118,3 +118,12 @@ fixture.
 This artifact records design and research decisions. It does not claim that
 enterprise authorization, full migration apply/rollback, or the complete
 context compiler already exists in the inspected revision.
+
+## Deployment update — 2026-09-29
+
+The home layout in the dated evidence above is superseded for new deployments:
+core/common is `~/.spipe`; private/local workspace is `~/spipe`;
+`~/spipe/common` links to core. Explicit custom roots and reviewed legacy pins
+remain supported. Existing inverse layouts require reviewed migration rather
+than automatic relocation. Current guidance is in
+[the setup guide](../local_ownership_setup.md).

@@ -1,0 +1,27 @@
+# Purpose: exercise canonical home installation and migration guards.
+# @req REQ-HOME-001 REQ-HOME-002
+use std.spec.*
+use std.spec.step
+use std.io_runtime.{process_run}
+
+"""
+# SPipe home deployment
+
+Install reusable core at ~/.spipe and private workspace at ~/spipe, linked
+through ~/spipe/common. Reject existing core as a private workspace before
+writing any links. Node fixtures use temporary local Git repositories.
+"""
+describe "SPipe canonical home deployment":
+    # @manual: show
+    it "installs separate default homes and refuses legacy core as private data":
+        # @capture(log)
+        step("Install hidden core and route a separate private workspace")
+        val (stdout, stderr, code) = process_run("node", ["--test", "--test-reporter=tap", "--test-name-pattern=^(default home layout installs hidden core and routes private workspace without modifying core|installer refuses a core checkout as private workspace without creating links)$", "test/unit/workspace_distribution_test.mjs"])
+        expect(code).to_equal(0)
+        step("Verify private configuration stays out of core")
+        expect(stdout).to_contain("default home layout installs hidden core and routes private workspace without modifying core")
+        step("Reject the legacy core directory before creating private links")
+        expect(stdout).to_contain("installer refuses a core checkout as private workspace without creating links")
+        step("Require both selected tests to execute successfully")
+        expect(stdout).to_contain("# pass 2")
+        expect(stdout).to_contain("# fail 0")

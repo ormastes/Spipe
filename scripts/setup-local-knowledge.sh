@@ -13,6 +13,7 @@ usage() {
   cat <<'USAGE'
 Usage: setup-local-knowledge.sh [--mode user|project] [--destination PATH]
        [--common-url URL] [--organization UID] [--project UID] [--yes]
+       [--allow-local-source]
 
 Creates a user-owned SPipe repository or finishes setup in a cloned project.
 Interactive prompts are used only when stdin is a terminal and a value is absent.
@@ -35,6 +36,7 @@ while [ "$#" -gt 0 ]; do
     --organization) shift; ORGANIZATION="${1:-}" ;;
     --project) shift; PROJECT="${1:-}" ;;
     --yes) YES=1 ;;
+    --allow-local-source) ALLOW_LOCAL_SOURCE=--allow-local-source ;;
     -h|--help) usage; exit 0 ;;
     *) echo "setup-local-knowledge: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -43,7 +45,7 @@ done
 
 MODE="${MODE:-$(prompt "Setup mode (user/project)" user)}"
 case "$MODE" in
-  user) DESTINATION="${DESTINATION:-$(prompt "User SPipe repository" "$HOME/.spipe")}" ;;
+  user) DESTINATION="${DESTINATION:-$(prompt "User SPipe repository" "${SPIPE_WORKSPACE:-$HOME/spipe}")}" ;;
   project) DESTINATION="${DESTINATION:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}" ;;
   *) echo "setup-local-knowledge: mode must be user or project" >&2; exit 2 ;;
 esac
@@ -65,19 +67,15 @@ validate_uid organization "$ORGANIZATION"
 validate_uid project "$PROJECT"
 
 if [ "$MODE" = user ]; then
-  mkdir -p "$DESTINATION"
+  script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+  # Validate/install before writing private files; occupied legacy roots fail closed.
+  node "$script_dir/install-spipe.mjs" --workspace "$DESTINATION" --upstream "$COMMON_URL" ${ALLOW_LOCAL_SOURCE:-} --apply
   if [ ! -d "$DESTINATION/.git" ]; then git -C "$DESTINATION" init >/dev/null; fi
-  common_path="$DESTINATION/.spipe"
   mkdir -p "$DESTINATION/organization" "$DESTINATION/projects" "$DESTINATION/local"
   if [ ! -e "$DESTINATION/.gitignore" ]; then
     printf 'local/\n' > "$DESTINATION/.gitignore"
   elif ! grep -Fqx 'local/' "$DESTINATION/.gitignore"; then
     printf '\nlocal/\n' >> "$DESTINATION/.gitignore"
-  fi
-  if [ ! -e "$common_path" ]; then
-    git -C "$DESTINATION" submodule add "$COMMON_URL" .spipe
-  elif ! git -C "$DESTINATION" ls-files --stage -- .spipe | grep -q '^160000 '; then
-    echo "setup-local-knowledge: occupied non-submodule target: $common_path" >&2; exit 3
   fi
 else
   if [ ! -d "$DESTINATION/.git" ] && ! git -C "$DESTINATION" rev-parse --git-dir >/dev/null 2>&1; then

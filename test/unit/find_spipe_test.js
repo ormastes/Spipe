@@ -28,6 +28,7 @@ function root(path, withGuides = false) {
 function run(cwd, home, extra = {}, args = []) {
   const env = { ...process.env, HOME: home, USERPROFILE: home, ...extra };
   delete env.SPIPE_HOME;
+  delete env.SPIPE_WORKSPACE;
   Object.assign(env, extra);
   return spawnSync(process.execPath, [locator, ...args], { cwd, env, encoding: "utf8" });
 }
@@ -86,5 +87,21 @@ test("agent guide exposes the common wiki, skills, guides, and compatibility kno
       "doc/00_llm_process/knowledge/index.md", "doc/00_llm_process/skill_command/skills"]) {
       assert.match(output, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});
+
+
+test("canonical hidden core precedes workspace route and old public checkout", () => {
+  const base = mkdtempSync(join(tmpdir(), "spipe-home-layout-"));
+  try {
+    const home = join(base, "home");
+    const core = root(join(home, ".spipe"));
+    const route = root(join(home, "spipe", "common"));
+    root(join(home, "spipe"));
+    assert.equal(run(base, home).stdout.trim(), core);
+    rmSync(core, { recursive: true, force: true });
+    assert.equal(run(base, home).stdout.trim(), route);
+    const custom = root(join(base, "private", "common"));
+    assert.equal(run(base, home, { SPIPE_WORKSPACE: join(base, "private") }).stdout.trim(), custom);
   } finally { rmSync(base, { recursive: true, force: true }); }
 });

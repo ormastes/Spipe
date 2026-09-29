@@ -174,8 +174,8 @@ node scripts/setup-spipe-workspace.mjs init --interactive
 node scripts/setup-spipe-workspace.mjs init --interactive --apply
 ```
 
-The default common checkout is `~/spipe`; private workspace state is under
-`~/.spipe`, with `~/.spipe/common` routing to the common checkout. Install or
+The default common checkout is `~/.spipe`; private workspace state is under
+`~/spipe`, with `~/spipe/common` routing to the common checkout. Install or
 update common using an approved Internet or intranet source (plan first):
 
 ```sh
@@ -192,8 +192,10 @@ node scripts/setup-spipe-workspace.mjs init --interactive \
 ```
 
 Set `SPIPE_HOME` for an explicit common checkout. Otherwise discovery checks a
-project `.spipe/common`, compatibility `.spipe/spipe` mounts, `~/spipe`, then
-`~/.spipe/common`. Existing legacy setup scripts remain compatibility adapters.
+project `.spipe/common`, compatibility project mounts, `~/.spipe`,
+`~/spipe/common`, legacy `~/spipe`, legacy `~/.spipe/common`, then an identified
+direct checkout. Set `SPIPE_WORKSPACE` for an explicit private workspace; its
+default is `~/spipe`. Existing legacy setup scripts remain compatibility adapters.
 For a dedicated intranet mirror, see
 `docs/INTRANET_MIRROR_AND_DISCOVERY.md`; mirror publication always requires an
 explicit reviewed apply operation.

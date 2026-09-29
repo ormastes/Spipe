@@ -240,24 +240,27 @@ tmp_common="$(mktemp -d)"
 tmp_user_parent="$(mktemp -d)"
 trap 'rm -rf "$tmp_host" "$tmp_link_host" "$tmp_link_outside" "$tmp_common" "$tmp_user_parent"' EXIT
 
-git -C "$tmp_common" init -q
+git -C "$tmp_common" init -q -b main
 git -C "$tmp_common" config user.name "SPipe Build"
 git -C "$tmp_common" config user.email "spipe-build@example.invalid"
 printf 'fixture\n' > "$tmp_common/README.md"
-git -C "$tmp_common" add README.md
+mkdir -p "$tmp_common/plugin"
+printf '{"name":"@simple-lang/spipe"}\n' > "$tmp_common/package.json"
+printf 'fixture\n' > "$tmp_common/plugin/index.md"
+git -C "$tmp_common" add README.md package.json plugin
 git -C "$tmp_common" commit -qm fixture
-GIT_ALLOW_PROTOCOL=file sh scripts/setup-local-knowledge.sh \
-  --mode user --destination "$tmp_user_parent/.spipe" \
+SPIPE_HOME="$tmp_common" GIT_ALLOW_PROTOCOL=file sh scripts/setup-local-knowledge.sh \
+  --mode user --destination "$tmp_user_parent/spipe" \
   --common-url "$tmp_common" --organization fixture-org \
-  --project fixture-project --yes >/dev/null
-test "$(git -C "$tmp_user_parent/.spipe" ls-files --stage -- .spipe | awk '{print $1}')" = 160000
-grep -Fq 'organization:fixture-org|' "$tmp_user_parent/.spipe/local/scopes.sdn"
-grep -Fq 'project:fixture-project|' "$tmp_user_parent/.spipe/local/scopes.sdn"
-GIT_ALLOW_PROTOCOL=file sh scripts/setup-local-knowledge.sh \
-  --mode user --destination "$tmp_user_parent/.spipe" \
+  --project fixture-project --allow-local-source --yes >/dev/null
+test "$(realpath "$tmp_user_parent/spipe/common")" = "$(realpath "$tmp_common")"
+grep -Fq 'organization:fixture-org|' "$tmp_user_parent/spipe/local/scopes.sdn"
+grep -Fq 'project:fixture-project|' "$tmp_user_parent/spipe/local/scopes.sdn"
+SPIPE_HOME="$tmp_common" GIT_ALLOW_PROTOCOL=file sh scripts/setup-local-knowledge.sh \
+  --mode user --destination "$tmp_user_parent/spipe" \
   --common-url "$tmp_common" --organization fixture-org \
-  --project fixture-project --yes >/dev/null
-test "$(grep -Fc 'project:fixture-project|' "$tmp_user_parent/.spipe/local/scopes.sdn")" = 1
+  --project fixture-project --allow-local-source --yes >/dev/null
+test "$(grep -Fc 'project:fixture-project|' "$tmp_user_parent/spipe/local/scopes.sdn")" = 1
 SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run | grep -q "doc/llm_process/spipe"
 test ! -e "$tmp_link_host/doc"
 if SPIPE_HOST_ROOT="$tmp_link_host" sh scripts/setup-spipe-links.sh --dry-run --force --doc-root ../escape >/dev/null 2>&1; then

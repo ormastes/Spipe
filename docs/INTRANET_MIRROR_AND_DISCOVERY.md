@@ -6,10 +6,10 @@ grant access to private scopes.
 
 ## Common and private workspace
 
-The preferred new global layout is `~/spipe` for common and `~/.spipe` for private
-workspace/configuration, with `~/.spipe/common -> ~/spipe`. Private company,
+The preferred new global layout is `~/.spipe` for common and `~/spipe` for private
+workspace/configuration, with `~/spipe/common -> ~/.spipe`. Private company,
 project-registration, user, host, and runtime roots stay in the workspace.
-Simple uses project-owned `.spipe/common` to route to `~/spipe`. Existing nested common
+Simple uses project-owned `.spipe/common` to route to `~/.spipe`. Existing nested common
 clones/submodules remain migration fallbacks with their exact pins. A dependency
 requirement incompatible with global common produces a diagnostic; adopting the
 route does not silently upgrade or physically relocate the old dependency.
@@ -17,6 +17,9 @@ route does not silently upgrade or physically relocate the old dependency.
 Common exposes `raw/`, `wiki/`, `doc/`, and `skills/` alongside its source/tooling.
 `doc/00_llm_process/knowledge/` continues to document the knowledge system.
 Private scope data and runtime state are excluded from common publication.
+`SPIPE_HOME` overrides core and `SPIPE_WORKSPACE` overrides the private root.
+Preserve explicit custom locations; an occupied inverse legacy layout requires
+[reviewed migration](../doc/00_llm_process/knowledge/local_migration.md).
 
 ## Three acquisition modes
 
@@ -24,7 +27,7 @@ Private scope data and runtime state are excluded from common publication.
 |---|---|
 | Internet | Clone the public `ormastes/Spipe` repository into the chosen common location. |
 | Intranet | Consume a preconfigured dedicated SPipe Git mirror with ordinary read credentials. |
-| Simple direct | Route project `.spipe/common` to canonical `~/spipe`; retain a recorded legacy dependency only through an explicit migration-compatible route. |
+| Simple direct | Route project `.spipe/common` to canonical `~/.spipe`; retain a recorded legacy dependency only through an explicit migration-compatible route. |
 
 Ordinary pinned bootstrap uses checkout-style submodule initialization, without
 `--remote`. Validate the actual recorded gitlink and trusted source first. No
@@ -41,7 +44,7 @@ and accept a fast-forward. A project dependency is never upgraded by this flow.
 
 The `config.sdn` lookup order is explicit `--config`, `SPIPE_CONFIG`,
 `config.sdn` in the current identified SPipe checkout, then
-`~/.spipe/config.sdn`. Fields are `spipe.upstream`, `spipe.mirror`,
+`~/spipe/config.sdn`. Fields are `spipe.upstream`, `spipe.mirror`,
 `spipe.branch`, `spipe.checkout`, and `spipe.workspace`. Define and test the
 actual SDN grammar in the implementation; these field names do not establish a
 parser. Credentials stay in the Git credential/SSH mechanism.
@@ -66,8 +69,8 @@ No credentials are stored in SDN or in clone URLs.
 Use the canonical order and failure behavior in
 [Plugin/agent bootstrap](PLUGIN_AGENT_BOOTSTRAP.md): explicit `SPIPE_HOME`,
 nearest project `.spipe/common`, `.spipe/spipe`, `.spipe/spipe_project`, or
-identified `.spipe`, then `~/spipe`, `~/.spipe/common`, an identified direct
-package, and legacy `~/.spipe` package roots. Fail explicitly
+identified `.spipe`, then `~/.spipe`, `~/spipe/common`, legacy `~/spipe`,
+legacy `~/.spipe/common`, and an identified direct package. Fail explicitly
 for invalid required selections or missing common. Discovery and mirror origin
 confer no private-scope authorization.
 

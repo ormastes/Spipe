@@ -4,37 +4,40 @@
 
 For a first user workspace, run `node scripts/setup-spipe-workspace.mjs init
 --interactive` from common. It prints a plan without writing; repeat with
-`--apply` after review. The default layout keeps common at `~/spipe` and private
+`--apply` after review. The default layout keeps common at `~/.spipe` and private
 company, organization, project-registration, user, host, and runtime state under
-`~/.spipe`.
+`~/spipe`.
 
 After cloning a Simple host project, run its `scripts/setup-spipe-local.shs`. It
-prefers `.spipe/common` routed to canonical `~/spipe`. Recorded `.spipe/spipe`
+prefers `.spipe/common` routed to canonical `~/.spipe`. Recorded `.spipe/spipe`
 layouts remain supported fallbacks until an explicit migration is reviewed.
 On Windows, use `scripts/setup-spipe-local.ps1`; first-user setup uses the
-common checkout's `scripts/setup-local-knowledge.ps1`.
+common checkout's `scripts/setup-local-knowledge.ps1`. For an explicitly trusted
+local Git fixture, the legacy shell user setup accepts `--allow-local-source`
+(PowerShell: `-AllowLocalSource`). Ordinary installation keeps local-path sources
+disabled; this option only opts into the selected fixture source.
 
 The portable Node bootstrap and distribution scripts accept external common
 routes while retaining verified legacy pins. They scaffold schema-2 workspace
 state and registrations; enterprise authorization and transactional document
 migration remain separate integration work.
 
-## Workspace revision target
+## Core and private workspace layout
 
-The preferred new global arrangement is `~/spipe` for common and `~/.spipe` for
-private configuration, with `~/.spipe/common` pointing to that checkout. Existing
+The preferred new global arrangement is `~/.spipe` for common and `~/spipe` for
+private configuration, with `~/spipe/common` pointing to that checkout. Existing
 `.spipe`, `.spipe/spipe`, and clone-as-`common/` installations preserve their
 physical location and reviewed Git pin. A project-required common revision is
 resolved explicitly; installing a global checkout does not upgrade a project.
 
 Simple's preferred project route is `<simple>/.spipe/common`, pointing or resolving
-to `~/spipe`. `.spipe/spipe` and `.spipe/spipe_project` follow as legacy compatibility
+to `~/.spipe`. `.spipe/spipe` and `.spipe/spipe_project` follow as legacy compatibility
 candidates. A mismatched global checkout
 produces a version diagnostic; it cannot silently replace a recorded dependency.
 
 ```text
-~/.spipe/
-├── common -> ~/spipe
+~/spipe/
+├── common -> ~/.spipe
 ├── companies/<company>/
 │   └── organizations/<organization>/
 ├── projects/<project>/                       registration; project stays external
@@ -50,6 +53,16 @@ produces a version diagnostic; it cannot silently replace a recorded dependency.
     ├── run/
     └── tmp/
 ```
+
+`SPIPE_HOME` selects the common/core checkout; `SPIPE_WORKSPACE` selects the
+private workspace. Keep explicit custom paths. The default distribution config
+is `~/spipe/config.sdn`. The `common` entry is a directory symlink (a junction
+on Windows) to the core, not a second copy of its files.
+
+If the old inverse layout already occupies these paths, setup must reject the
+collision. Review and migrate the existing core and private workspace separately,
+or select non-conflicting explicit paths. Never overwrite, automatically move,
+or publish private contents to make the defaults fit. See [migration](local_migration.md).
 
 Company is an owner in its own right. Departments inherit applicable company
 restrictions, while sibling department documents require separate access.

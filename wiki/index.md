@@ -12,7 +12,7 @@ user, and host in that order. Only active authorized scopes contribute content;
 a mount or directory is a locator, not permission. Enter through indexes and
 retrieve relevant leaves with bounded traversal.
 
-Canonical global common is `~/spipe`; Simple's preferred project route is
+Canonical global common is `~/.spipe`; Simple's preferred project route is
 `.spipe/common`. The shared locator retains legacy routes and validates the
 project's reviewed common requirement before selecting content.
 
@@ -21,6 +21,10 @@ lifecycle decisions and specifications; `skills/` defines agent procedures.
 Keep evidence provenance and applicability when composing scopes. Start from
 the [common skills index](../skills/index.md) so Claude, Codex, Gemini, and MCP
 adapters use the same discovery and research contract.
+
+Private/local knowledge and runtime live under `~/spipe`;
+`~/spipe/common` links to core `~/.spipe`. Respect explicit `SPIPE_HOME` and
+`SPIPE_WORKSPACE` roots and retain legacy pins during reviewed migration.
 
 ## Routes
 

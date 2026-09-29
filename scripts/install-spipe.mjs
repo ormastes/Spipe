@@ -2,12 +2,12 @@
 import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { args, config, source, pathValue, present, safeRoot, directory, git, cleanPackage, lock, cli, UPSTREAM, within } from './distribution-common.mjs';
+import { args, config, source, pathValue, present, safeRoot, directory, git, cleanPackage, lock, cli, UPSTREAM, within, isPackage } from './distribution-common.mjs';
 
 export function install(options) {
   const cfg = config(options);
-  const checkout = pathValue(options.checkout || process.env.SPIPE_HOME || cfg.checkout || join(homedir(), 'spipe'));
-  const workspace = pathValue(options.workspace || cfg.workspace || join(homedir(), '.spipe'));
+  const checkout = pathValue(options.checkout || process.env.SPIPE_HOME || cfg.checkout || join(homedir(), '.spipe'));
+  const workspace = pathValue(options.workspace || process.env.SPIPE_WORKSPACE || cfg.workspace || join(homedir(), 'spipe'));
   safeRoot(checkout); safeRoot(workspace);
   if (within(checkout, workspace) || within(workspace, checkout)) throw Error('Use separate common and private workspace roots');
   const mode = options.source || 'auto';
@@ -23,6 +23,7 @@ export function install(options) {
   const link = join(workspace, 'common');
   function validate() {
     directory(checkout); directory(workspace);
+    if (isPackage(workspace)) throw Error('Private workspace is an existing SPipe core; review migration before setup');
     if (present(link) && (!present(checkout) || realpathSync(link) !== realpathSync(checkout))) throw Error('Workspace common route is occupied by a different target');
     if (present(checkout)) {
       const head = cleanPackage(checkout);

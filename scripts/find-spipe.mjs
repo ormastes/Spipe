@@ -39,10 +39,11 @@ if (process.env.SPIPE_HOME) {
   candidates.push(process.env.SPIPE_HOME);
 }
 candidates.push(...projectCandidates(process.cwd()));
+candidates.push(join(home, ".spipe"));
+candidates.push(join(process.env.SPIPE_WORKSPACE || join(home, "spipe"), "common"));
 candidates.push(join(home, "spipe"));
 candidates.push(join(home, ".spipe", "common"));
 candidates.push(process.cwd());
-candidates.push(join(home, ".spipe"));
 
 const seen = new Set();
 let root = null;
@@ -56,7 +57,7 @@ for (const candidate of candidates) {
 
 if (!root) {
   console.error("SPipe common was not found.");
-  console.error("Install ~/spipe from the approved Internet upstream or intranet mirror,");
+  console.error("Install ~/.spipe from the approved Internet upstream or intranet mirror,");
   console.error("or configure Simple's .spipe/common route. Legacy nested mounts remain readable.");
   process.exit(2);
 }

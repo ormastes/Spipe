@@ -70,3 +70,12 @@ This follow-up closes the easy-user bootstrap/distribution gaps in the matrix;
 it does not claim enterprise authorization, canonical document migration,
 runtime KV reuse, or native Windows/macOS deployment. Those remain separate
 architecture work rather than hidden behavior in an installation script.
+
+## Deployment update — 2026-09-29
+
+The home layout in the dated evidence above is superseded for new deployments:
+core/common is `~/.spipe`; private/local workspace is `~/spipe`;
+`~/spipe/common` links to core. Explicit custom roots and reviewed legacy pins
+remain supported. Existing inverse layouts require reviewed migration rather
+than automatic relocation. Current guidance is in
+[the setup guide](../../00_llm_process/knowledge/local_ownership_setup.md).
