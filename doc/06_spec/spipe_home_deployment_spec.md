@@ -19,3 +19,16 @@ Execution status: authored SSpec and manual; approved self-hosted Simple runtime
 not available in the isolated worktrees. Node fixture execution is recorded
 separately by the deployment lane. Do not present this manual as generated
 SSpec PASS evidence.
+
+## Portable home placeholders
+
+REQ-HOME-003: quoted `{home}` path arguments and SDN path values expand using
+`os.homedir()` before installation and workspace registration. The additional
+SSpec scenario selects the real local-Git fixture, requires a zero command exit,
+exactly one passing test, and no failures. The fixture also uses a home path with
+spaces and checks no literal `{home}` directory was created.
+
+Four new Node scenarios passed locally: leading-token semantics without shell
+evaluation, installer/SDN launch and registration, environment-based discovery,
+and the legacy user entrypoint. Native PowerShell is covered by the same test's
+Windows branch in CI. This is Node evidence, not SSpec execution evidence.

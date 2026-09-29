@@ -25,3 +25,14 @@ describe "SPipe canonical home deployment":
         step("Require both selected tests to execute successfully")
         expect(stdout).to_contain("# pass 2")
         expect(stdout).to_contain("# fail 0")
+
+    # @req REQ-HOME-003
+    # @manual: show
+    it "expands quoted home path arguments and configuration before installation":
+        # @capture(log)
+        step("Launch the installer with literal home placeholders in SDN configuration")
+        val (stdout, stderr, code) = process_run("node", ["--test", "--test-reporter=tap", "--test-name-pattern=^home placeholder launch arguments and SDN config install and register the same core$", "test/unit/home_placeholder_test.mjs"])
+        expect(code).to_equal(0)
+        step("Require the real install and workspace registration fixture to pass")
+        expect(stdout).to_contain("# pass 1")
+        expect(stdout).to_contain("# fail 0")

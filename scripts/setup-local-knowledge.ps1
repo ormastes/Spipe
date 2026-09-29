@@ -14,6 +14,8 @@ if ($Destination -eq "") {
     if ($Mode -eq "user") { $Destination = if ($env:SPIPE_WORKSPACE) { $env:SPIPE_WORKSPACE } else { Join-Path $HOME "spipe" } }
     else { $Destination = (& git rev-parse --show-toplevel).Trim() }
 }
+if ($Destination -eq "{home}") { $Destination = $HOME }
+elseif ($Destination -match '^\{home\}[/\\]') { $Destination = Join-Path $HOME $Destination.Substring(7) }
 $Destination = [IO.Path]::GetFullPath($Destination)
 if ($Destination -eq [IO.Path]::GetPathRoot($Destination)) { throw "Refusing filesystem root" }
 foreach ($Entry in @(@("organization", $Organization), @("project", $Project))) {
@@ -21,16 +23,17 @@ foreach ($Entry in @(@("organization", $Organization), @("project", $Project))) 
 }
 
 if ($Mode -eq "user") {
-    $SourceOptions = if ($AllowLocalSource) { @("--allow-local-source") } else { @() }
+    [string[]]$SourceOptions = @()
+    if ($AllowLocalSource) { $SourceOptions += "--allow-local-source" }
     & node (Join-Path $PSScriptRoot "install-spipe.mjs") --workspace $Destination --upstream $CommonUrl @SourceOptions --apply
     if ($LASTEXITCODE -ne 0) { throw "SPipe core installation failed; private setup stopped" }
     if (-not (Test-Path (Join-Path $Destination ".git"))) { & git -C $Destination init | Out-Null }
     foreach ($Name in @("organization", "projects", "local")) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Destination $Name) | Out-Null
     }
-    $Ignore = Join-Path $Destination ".gitignore"
-    if (-not (Test-Path $Ignore)) { Set-Content -NoNewline:$false $Ignore "local/" }
-    elseif (-not (Select-String -Quiet -SimpleMatch "local/" $Ignore)) { Add-Content $Ignore "`nlocal/" }
+    $IgnorePath = Join-Path $Destination ".gitignore"
+    if (-not (Test-Path $IgnorePath)) { Set-Content -LiteralPath $IgnorePath -Value "local/" }
+    elseif (-not (Select-String -Quiet -SimpleMatch -Pattern "local/" -LiteralPath $IgnorePath)) { Add-Content -LiteralPath $IgnorePath -Value "`nlocal/" }
 
 } elseif ($Mode -eq "project") {
     & git -C $Destination rev-parse --git-dir | Out-Null
@@ -52,13 +55,13 @@ else {
     $Registry = Join-Path $ConfigHome "spipe/scopes.sdn"
 }
 New-Item -ItemType Directory -Force -Path (Split-Path $Registry -Parent) | Out-Null
-if (-not (Test-Path $Registry)) { Set-Content $Registry "# machine-local SPipe scope mounts" }
-$Lines = @(Get-Content $Registry)
+if (-not (Test-Path $Registry)) { Set-Content -LiteralPath $Registry -Value "# machine-local SPipe scope mounts" }
+$Lines = @(Get-Content -LiteralPath $Registry)
 if ($Organization -ne "" -and -not ($Lines -match "^organization:$([regex]::Escape($Organization))\|")) {
-    Add-Content $Registry "organization:$Organization|$(Join-Path $Destination "organization/$Organization")"
+    Add-Content -LiteralPath $Registry -Value "organization:$Organization|$(Join-Path $Destination "organization/$Organization")"
 }
 if ($Project -ne "" -and -not ($Lines -match "^project:$([regex]::Escape($Project))\|")) {
-    Add-Content $Registry "project:$Project|$Destination"
+    Add-Content -LiteralPath $Registry -Value "project:$Project|$Destination"
 }
 Write-Output "mode=$Mode"
 Write-Output "destination=$Destination"

@@ -3,13 +3,14 @@
 ## Available setup
 
 For a first user workspace, run `node scripts/setup-spipe-workspace.mjs init
---interactive` from common. It prints a plan without writing; repeat with
-`--apply` after review. The default layout keeps common at `~/.spipe` and private
+--interactive --dry-run` from common. It prints a plan without writing; repeat without
+`--dry-run` and with
+`--apply` after review. The default layout keeps common at `{home}/.spipe` and private
 company, organization, project-registration, user, host, and runtime state under
-`~/spipe`.
+`{home}/spipe`.
 
 After cloning a Simple host project, run its `scripts/setup-spipe-local.shs`. It
-prefers `.spipe/common` routed to canonical `~/.spipe`. Recorded `.spipe/spipe`
+prefers `.spipe/common` routed to canonical `{home}/.spipe`. Recorded `.spipe/spipe`
 layouts remain supported fallbacks until an explicit migration is reviewed.
 On Windows, use `scripts/setup-spipe-local.ps1`; first-user setup uses the
 common checkout's `scripts/setup-local-knowledge.ps1`. For an explicitly trusted
@@ -22,22 +23,44 @@ routes while retaining verified legacy pins. They scaffold schema-2 workspace
 state and registrations; enterprise authorization and transactional document
 migration remain separate integration work.
 
+## Portable home paths
+
+Deployment path arguments, configuration values, and supported environment path
+values accept the literal `"{home}"` or `"{home}/suffix"`. Node and PowerShell
+entrypoints also accept `"{home}\suffix"`; POSIX shell adapters accept the
+forward-slash form. Use forward slashes in portable examples on every platform.
+The scripts expand the leading placeholder using the current account home.
+Quote path arguments so spaces remain part of one value.
+Use `"{home}/.spipe"` for core and `"{home}/spipe"` for private state.
+
+Run launches from the identified core checkout using a relative script name:
+
+```sh
+node scripts/setup-spipe-workspace.mjs init --interactive --dry-run --common "{home}/.spipe" --root "{home}/spipe"
+node scripts/install-spipe.mjs --source auto --checkout "{home}/.spipe" --workspace "{home}/spipe"
+```
+
+These commands print plans; apply the reviewed choices by removing `--dry-run`
+where present and adding `--apply`.
+`{home}` is expanded by the deployment script, not the shell or Node launcher.
+The conceptual tree below uses the same placeholder to identify the roots.
+
 ## Core and private workspace layout
 
-The preferred new global arrangement is `~/.spipe` for common and `~/spipe` for
-private configuration, with `~/spipe/common` pointing to that checkout. Existing
+The preferred new global arrangement is `{home}/.spipe` for common and `{home}/spipe` for
+private configuration, with `{home}/spipe/common` pointing to that checkout. Existing
 `.spipe`, `.spipe/spipe`, and clone-as-`common/` installations preserve their
 physical location and reviewed Git pin. A project-required common revision is
 resolved explicitly; installing a global checkout does not upgrade a project.
 
 Simple's preferred project route is `<simple>/.spipe/common`, pointing or resolving
-to `~/.spipe`. `.spipe/spipe` and `.spipe/spipe_project` follow as legacy compatibility
+to `{home}/.spipe`. `.spipe/spipe` and `.spipe/spipe_project` follow as legacy compatibility
 candidates. A mismatched global checkout
 produces a version diagnostic; it cannot silently replace a recorded dependency.
 
 ```text
-~/spipe/
-├── common -> ~/.spipe
+{home}/spipe/
+├── common -> {home}/.spipe
 ├── companies/<company>/
 │   └── organizations/<organization>/
 ├── projects/<project>/                       registration; project stays external
@@ -56,7 +79,7 @@ produces a version diagnostic; it cannot silently replace a recorded dependency.
 
 `SPIPE_HOME` selects the common/core checkout; `SPIPE_WORKSPACE` selects the
 private workspace. Keep explicit custom paths. The default distribution config
-is `~/spipe/config.sdn`. The `common` entry is a directory symlink (a junction
+is `{home}/spipe/config.sdn`. The `common` entry is a directory symlink (a junction
 on Windows) to the core, not a second copy of its files.
 
 If the old inverse layout already occupies these paths, setup must reject the

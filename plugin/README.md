@@ -16,12 +16,12 @@ and procedures (`skills/`). `runtime/<user>/<host>/` contains reconstructible
 Retained research history is not disposable cache; runtime is never canonical
 knowledge.
 
-`~/.spipe` is the canonical common checkout. Simple uses project-owned
-`.spipe/common` to route to it; the workspace uses `~/spipe/common -> ~/.spipe`.
+`{home}/.spipe` is the canonical common checkout. Simple uses project-owned
+`.spipe/common` to route to it; the workspace uses `{home}/spipe/common -> {home}/.spipe`.
 Discovery follows explicit `SPIPE_HOME`, then the nearest project
 `.spipe/common`, `.spipe/spipe`, `.spipe/spipe_project`, or identified `.spipe`
-before `~/.spipe`, `~/spipe/common`, legacy `~/spipe`, legacy
-`~/.spipe/common`, and an identified direct checkout. Validate project revision requirements and diagnose
+before `{home}/.spipe`, `{home}/spipe/common`, legacy `{home}/spipe`, legacy
+`{home}/.spipe/common`, and an identified direct checkout. Validate project revision requirements and diagnose
 incompatibility without silently upgrading or relocating a recorded dependency.
 Missing or invalid required common is a setup error. Acquisition choices are
 Internet, intranet mirror, and Simple's route to the common checkout (or an

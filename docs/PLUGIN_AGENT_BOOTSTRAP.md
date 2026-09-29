@@ -10,19 +10,19 @@ One locator serves CLI, MCP, plugin, Claude, Codex, Gemini, and research workers
 
 ```text
 SPIPE_HOME
-→ project .spipe/common (route to ~/.spipe)
+→ project .spipe/common (route to {home}/.spipe)
 → project .spipe/spipe
 → project .spipe/spipe_project
 → project .spipe when it is itself common
-→ ~/.spipe
-→ ~/spipe/common
-→ legacy ~/spipe package checkout
-→ legacy ~/.spipe/common
+→ {home}/.spipe
+→ {home}/spipe/common
+→ legacy {home}/spipe package checkout
+→ legacy {home}/.spipe/common
 → identified direct SPipe checkout
 ```
 
-`~/.spipe` is the canonical common checkout. Simple's project-owned
-`.spipe/common` routes to it; `~/spipe/common` is the private workspace link. The
+`{home}/.spipe` is the canonical common checkout. Simple's project-owned
+`.spipe/common` routes to it; `{home}/spipe/common` is the private workspace link. The
 descriptor identifies a common route; its machine-specific absolute target
 belongs in private local configuration. Legacy nested project checkouts are
 migration fallbacks, not the preferred new installation.
@@ -46,7 +46,7 @@ compatible adapter and disclose its limitations. Prompt files describe policy;
 they must not become separate implementations of resolution.
 
 Resolve the workspace independently from common: `SPIPE_WORKSPACE` overrides
-the default private root `~/spipe`. `SPIPE_HOME` selects core, not private state.
+the default private root `{home}/spipe`. `SPIPE_HOME` selects core, not private state.
 Occupied inverse legacy roots require reviewed migration, never automatic moves.
 Obtain active authorized scopes
 before reading indexes: common, company, organization(s), project(s), user, host.
