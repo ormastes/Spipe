@@ -23,7 +23,8 @@ foreach ($Entry in @(@("organization", $Organization), @("project", $Project))) 
 }
 
 if ($Mode -eq "user") {
-    $SourceOptions = if ($AllowLocalSource) { @("--allow-local-source") } else { @() }
+    [string[]]$SourceOptions = @()
+    if ($AllowLocalSource) { $SourceOptions += "--allow-local-source" }
     & node (Join-Path $PSScriptRoot "install-spipe.mjs") --workspace $Destination --upstream $CommonUrl @SourceOptions --apply
     if ($LASTEXITCODE -ne 0) { throw "SPipe core installation failed; private setup stopped" }
     if (-not (Test-Path (Join-Path $Destination ".git"))) { & git -C $Destination init | Out-Null }
