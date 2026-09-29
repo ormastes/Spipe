@@ -31,9 +31,9 @@ if ($Mode -eq "user") {
     foreach ($Name in @("organization", "projects", "local")) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Destination $Name) | Out-Null
     }
-    $Ignore = Join-Path $Destination ".gitignore"
-    if (-not (Test-Path $Ignore)) { Set-Content -NoNewline:$false $Ignore "local/" }
-    elseif (-not (Select-String -Quiet -SimpleMatch "local/" $Ignore)) { Add-Content $Ignore "`nlocal/" }
+    $IgnorePath = Join-Path $Destination ".gitignore"
+    if (-not (Test-Path $IgnorePath)) { Set-Content -LiteralPath $IgnorePath -Value "local/" }
+    elseif (-not (Select-String -Quiet -SimpleMatch -Pattern "local/" -LiteralPath $IgnorePath)) { Add-Content -LiteralPath $IgnorePath -Value "`nlocal/" }
 
 } elseif ($Mode -eq "project") {
     & git -C $Destination rev-parse --git-dir | Out-Null
@@ -55,13 +55,13 @@ else {
     $Registry = Join-Path $ConfigHome "spipe/scopes.sdn"
 }
 New-Item -ItemType Directory -Force -Path (Split-Path $Registry -Parent) | Out-Null
-if (-not (Test-Path $Registry)) { Set-Content $Registry "# machine-local SPipe scope mounts" }
-$Lines = @(Get-Content $Registry)
+if (-not (Test-Path $Registry)) { Set-Content -LiteralPath $Registry -Value "# machine-local SPipe scope mounts" }
+$Lines = @(Get-Content -LiteralPath $Registry)
 if ($Organization -ne "" -and -not ($Lines -match "^organization:$([regex]::Escape($Organization))\|")) {
-    Add-Content $Registry "organization:$Organization|$(Join-Path $Destination "organization/$Organization")"
+    Add-Content -LiteralPath $Registry -Value "organization:$Organization|$(Join-Path $Destination "organization/$Organization")"
 }
 if ($Project -ne "" -and -not ($Lines -match "^project:$([regex]::Escape($Project))\|")) {
-    Add-Content $Registry "project:$Project|$Destination"
+    Add-Content -LiteralPath $Registry -Value "project:$Project|$Destination"
 }
 Write-Output "mode=$Mode"
 Write-Output "destination=$Destination"
