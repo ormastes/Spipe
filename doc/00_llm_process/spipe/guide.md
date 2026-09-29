@@ -17,17 +17,20 @@ required check and reports exact denial remediation.
 
 ## Deployment and private knowledge
 
-Install SPipe core/common at `~/.spipe`. Keep private/local scopes, configuration,
-and runtime under `~/spipe`, with `~/spipe/common` linked to `~/.spipe`
+Install SPipe core/common at `{home}/.spipe`. Keep private/local scopes, configuration,
+and runtime under `{home}/spipe`, with `{home}/spipe/common` linked to `{home}/.spipe`
 (a directory symlink, or a junction on Windows). `SPIPE_HOME` overrides core;
 `SPIPE_WORKSPACE` overrides the private workspace. Explicit custom roots and
 reviewed project pins remain supported.
 
-From the identified core checkout, plan and then apply first-user setup:
+From the identified core checkout, plan and then apply first-user setup.
+Deployment scripts resolve literal `"{home}"` to the current account home on
+Windows, Linux, macOS, and BSD. Keep the script executable path relative to the
+checkout: shells do not expand `{home}` in a `node` script filename.
 
 ```sh
-node scripts/setup-spipe-workspace.mjs init --interactive
-node scripts/setup-spipe-workspace.mjs init --interactive --apply
+node scripts/setup-spipe-workspace.mjs init --interactive --dry-run --common "{home}/.spipe" --root "{home}/spipe"
+node scripts/setup-spipe-workspace.mjs init --interactive --common "{home}/.spipe" --root "{home}/spipe" --apply
 ```
 
 An existing inverse home layout needs reviewed migration; setup must not move

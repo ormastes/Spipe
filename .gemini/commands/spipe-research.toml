@@ -4,8 +4,8 @@ Run `node scripts/find-spipe.mjs --agent-guide` from an identified SPipe
 checkout, or use that script from the installed common package. Respect
 `SPIPE_HOME`; discovery otherwise checks nearest project `.spipe/common`,
 `.spipe/spipe`, `.spipe/spipe_project`, or identified `.spipe` before
-`~/.spipe`, `~/spipe/common`, legacy `~/spipe`, legacy
-`~/.spipe/common`, and identified direct checkouts. Read every
+`{home}/.spipe`, `{home}/spipe/common`, legacy `{home}/spipe`, legacy
+`{home}/.spipe/common`, and identified direct checkouts. Read every
 existing path printed, starting with
 `plugin/skills/spipe-research/SKILL.md`, and follow its authorization, bounded
 wiki traversal, evidence, and owner-correct writeback rules. Discovery does not

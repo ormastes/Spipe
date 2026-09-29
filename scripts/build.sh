@@ -228,6 +228,7 @@ node --test test/unit/self_review_policy_test.js
 node --test test/unit/self_review_guidance_test.js
 node --test test/unit/find_spipe_test.js
 node --test test/unit/workspace_distribution_test.mjs
+node --test test/unit/home_placeholder_test.mjs
 
 tmp_host="$(mktemp -d)"
 trap 'rm -rf "$tmp_host"' EXIT

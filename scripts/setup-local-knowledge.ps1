@@ -14,6 +14,8 @@ if ($Destination -eq "") {
     if ($Mode -eq "user") { $Destination = if ($env:SPIPE_WORKSPACE) { $env:SPIPE_WORKSPACE } else { Join-Path $HOME "spipe" } }
     else { $Destination = (& git rev-parse --show-toplevel).Trim() }
 }
+if ($Destination -eq "{home}") { $Destination = $HOME }
+elseif ($Destination -match '^\{home\}[/\\]') { $Destination = Join-Path $HOME $Destination.Substring(7) }
 $Destination = [IO.Path]::GetFullPath($Destination)
 if ($Destination -eq [IO.Path]::GetPathRoot($Destination)) { throw "Refusing filesystem root" }
 foreach ($Entry in @(@("organization", $Organization), @("project", $Project))) {

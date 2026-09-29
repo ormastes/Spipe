@@ -50,6 +50,10 @@ case "$MODE" in
   *) echo "setup-local-knowledge: mode must be user or project" >&2; exit 2 ;;
 esac
 
+case "$DESTINATION" in
+  '{home}') DESTINATION="$HOME" ;;
+  '{home}/'*) DESTINATION="$HOME/${DESTINATION#'{home}/'}" ;;
+esac
 case "$DESTINATION" in /) echo "setup-local-knowledge: refusing filesystem root" >&2; exit 2 ;; esac
 
 validate_uid() {

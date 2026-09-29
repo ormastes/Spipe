@@ -57,7 +57,7 @@ repositories are registered from a separate workspace unless direct workspace us
 was explicitly configured. A helper must not infer permission to populate private
 company/user trees beside arbitrary project source.
 
-The preferred destination for global common is `~/.spipe`; Simple resolves it through
+The preferred destination for global common is `{home}/.spipe`; Simple resolves it through
 the project route `.spipe/common`. Introduce that route only after validating the
 project's common requirement and ownership of its parent paths. Existing
 `.spipe/spipe` and `.spipe/spipe_project` remain later compatibility candidates.
@@ -65,15 +65,15 @@ Do not replace or move an existing submodule merely to match the new spelling.
 
 ## Inverse home layout migration
 
-New installs use core `~/.spipe`, private/local `~/spipe`, and
-`~/spipe/common -> ~/.spipe`. Earlier installs may have core at `~/spipe`
-and private state at `~/.spipe`; both default destinations are then occupied.
+New installs use core `{home}/.spipe`, private/local `{home}/spipe`, and
+`{home}/spipe/common -> {home}/.spipe`. Earlier installs may have core at `{home}/spipe`
+and private state at `{home}/.spipe`; both default destinations are then occupied.
 Bootstrap rejects this collision instead of swapping directories automatically.
 Preserve all content, credentials, ownership, Git pins, and active process state.
 Review any relocation first, or retain the physical locations using explicit
 `SPIPE_HOME` and `SPIPE_WORKSPACE` settings. Update private config and link
 targets only after the selected roots are verified. Do not recursively publish
-`~/spipe` as common: that path now owns private scopes and runtime state.
+`{home}/spipe` as common: that path now owns private scopes and runtime state.
 
 ## Reader and writer cutover
 

@@ -19,6 +19,9 @@ export function args(argv, values, flags = []) {
   return result;
 }
 export function pathValue(value) {
+  // Expand only the leading home token; never evaluate shell syntax.
+  if (value === '{home}') return resolve(homedir());
+  if (/^\{home\}[/\\]/.test(value)) return resolve(join(homedir(), value.slice(7)));
   return resolve(value === '~' ? homedir() : value.startsWith('~/') || value.startsWith('~\\') ? join(homedir(), value.slice(2)) : value);
 }
 export function present(path) { try { lstatSync(path); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } }
@@ -62,7 +65,7 @@ export function cleanPackage(root) {
   return head;
 }
 export function source(value, localAllowed = false) {
-  if (isAbsolute(value) || value.startsWith('~/') || value.startsWith('~\\')) {
+  if (isAbsolute(value) || /^\{home\}(?:$|[/\\])/.test(value) || value.startsWith('~/') || value.startsWith('~\\')) {
     if (!localAllowed) throw Error('Local Git sources require --allow-local-source');
     return pathValue(value);
   }

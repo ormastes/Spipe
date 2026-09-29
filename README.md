@@ -167,35 +167,38 @@ sh scripts/check-spipe-submodule-gitlinks.shs --check
 
 SPipe supports common, company, organization, project, user, and host knowledge
 without copying owner-controlled repositories. Plan a first-user workspace
-interactively, then review and apply the same choices:
+interactively, then review and apply the same choices. Run these commands from
+the identified core checkout; deployment scripts expand the quoted literal
+`"{home}"` to the current account home on Windows, Linux, macOS, and BSD.
+It is a script path value, not shell substitution:
 
 ```sh
-node scripts/setup-spipe-workspace.mjs init --interactive
-node scripts/setup-spipe-workspace.mjs init --interactive --apply
+node scripts/setup-spipe-workspace.mjs init --interactive --dry-run --common "{home}/.spipe" --root "{home}/spipe"
+node scripts/setup-spipe-workspace.mjs init --interactive --common "{home}/.spipe" --root "{home}/spipe" --apply
 ```
 
-The default common checkout is `~/.spipe`; private workspace state is under
-`~/spipe`, with `~/spipe/common` routing to the common checkout. Install or
+The default common checkout is `{home}/.spipe`; private workspace state is under
+`{home}/spipe`, with `{home}/spipe/common` routing to the common checkout. Install or
 update common using an approved Internet or intranet source (plan first):
 
 ```sh
-node scripts/install-spipe.mjs --source auto
-node scripts/install-spipe.mjs --source auto --apply
+node scripts/install-spipe.mjs --source auto --checkout "{home}/.spipe" --workspace "{home}/spipe"
+node scripts/install-spipe.mjs --source auto --checkout "{home}/.spipe" --workspace "{home}/spipe" --apply
 ```
 
 After cloning an ordinary project, register its existing Git root without
 copying or modifying it:
 
 ```sh
-node scripts/setup-spipe-workspace.mjs init --interactive \
+node scripts/setup-spipe-workspace.mjs init --interactive --dry-run \
   --project my-project --project-path /path/to/my-project
 ```
 
 Set `SPIPE_HOME` for an explicit common checkout. Otherwise discovery checks a
-project `.spipe/common`, compatibility project mounts, `~/.spipe`,
-`~/spipe/common`, legacy `~/spipe`, legacy `~/.spipe/common`, then an identified
+project `.spipe/common`, compatibility project mounts, `{home}/.spipe`,
+`{home}/spipe/common`, legacy `{home}/spipe`, legacy `{home}/.spipe/common`, then an identified
 direct checkout. Set `SPIPE_WORKSPACE` for an explicit private workspace; its
-default is `~/spipe`. Existing legacy setup scripts remain compatibility adapters.
+default is `{home}/spipe`. Existing legacy setup scripts remain compatibility adapters.
 For a dedicated intranet mirror, see
 `docs/INTRANET_MIRROR_AND_DISCOVERY.md`; mirror publication always requires an
 explicit reviewed apply operation.

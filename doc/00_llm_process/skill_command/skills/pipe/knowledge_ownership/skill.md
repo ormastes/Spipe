@@ -9,10 +9,10 @@ description: Set up and maintain common, company, organization, project, user, a
    active authorized company, organization, project, user, and host scopes before
    reading them. A folder, mount, supplied user ID, or parent company does not
    grant access. Diagnose missing required authority before protected work.
-   Canonical global common is `~/.spipe`; Simple's preferred project route is
+   Canonical global common is `{home}/.spipe`; Simple's preferred project route is
    `.spipe/common`. Preserve `.spipe/spipe` and `.spipe/spipe_project` as later
    compatibility candidates and validate project version requirements before use.
-   Private/local state defaults to `~/spipe`, with `~/spipe/common -> ~/.spipe`.
+   Private/local state defaults to `{home}/spipe`, with `{home}/spipe/common -> {home}/.spipe`.
    Respect `SPIPE_HOME` for core and `SPIPE_WORKSPACE` for private state; never
    automatically relocate an occupied legacy layout.
 2. Load relevant procedures and enter each authorized scope through `index.md`
