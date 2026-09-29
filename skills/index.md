@@ -6,11 +6,15 @@ first, then read this index and the task-relevant skill before acting.
 
 ## Common checkout
 
-The canonical global common checkout is `~/spipe`. In the Simple repository,
+The canonical global common checkout is `~/.spipe`. In the Simple repository,
 the project route is `.spipe/common`; `.spipe/spipe` and
 `.spipe/spipe_project` remain compatibility routes for reviewed existing
 pins. A project-local route must not silently upgrade or replace the global
 checkout.
+
+Private/local knowledge and runtime live under `~/spipe`;
+`~/spipe/common` links to core `~/.spipe`. Respect explicit `SPIPE_HOME` and
+`SPIPE_WORKSPACE` roots and retain legacy pins during reviewed migration.
 
 ## Required bootstrap
 

@@ -14,7 +14,7 @@ function id(value, kind) {
 }
 export async function promptSetup(options, ask) {
   const answer = { ...options };
-  answer.root ||= (await ask('Private workspace root [~/.spipe]: ')).trim() || join(homedir(), '.spipe');
+  answer.root ||= (await ask('Private workspace root [~/spipe]: ')).trim() || process.env.SPIPE_WORKSPACE || join(homedir(), 'spipe');
   answer.user ||= (await ask('Stable user ID: ')).trim();
   answer.host ||= (await ask('Stable host ID: ')).trim();
   if (!Object.hasOwn(answer, 'company')) answer.company = (await ask('Company ID (empty for personal): ')).trim();
@@ -26,7 +26,7 @@ export async function promptSetup(options, ask) {
 }
 
 export function workspaceSetup(options) {
-  const root = pathValue(options.root || join(homedir(), '.spipe'));
+  const root = pathValue(options.root || process.env.SPIPE_WORKSPACE || join(homedir(), 'spipe'));
   safeRoot(root);
   if (isPackage(root) || present(join(root, 'src'))) throw Error('Register a source repository from a separate private workspace');
   const user = id(options.user, 'user'), host = id(options.host, 'host');
@@ -48,7 +48,7 @@ export function workspaceSetup(options) {
   const legacy = ['common', '.spipe/spipe', '.spipe'].map(path => join(root, path)).filter(path => isPackage(path));
   if (!selected && !oldManifest && legacy.length > 1) throw Error('Multiple common candidates; select --common explicitly');
   if (oldManifest && !within(root, pathValue(join(root, oldManifest.common.path)))) throw Error('Portable common path escapes workspace');
-  const globalCommon = join(homedir(), 'spipe');
+  const globalCommon = join(homedir(), '.spipe');
   const projectCommon = projectPath ? [join(projectPath, '.spipe/common'), join(projectPath, '.spipe/spipe'), join(projectPath, '.spipe/spipe_project'), join(projectPath, '.spipe')].find(isPackage) : null;
   const common = selected ? pathValue(selected) : oldManifest ? join(root, oldManifest.common.path) : legacy[0] || projectCommon || globalCommon;
   const exists = present(common);
@@ -140,7 +140,7 @@ export function workspaceSetup(options) {
 }
 
 export function inspectLocal(options) {
-  const root = pathValue(options.root || join(homedir(), '.spipe'));
+  const root = pathValue(options.root || process.env.SPIPE_WORKSPACE || join(homedir(), 'spipe'));
   safeRoot(root);
   const base = managed(root, 'local');
   const entries = [];

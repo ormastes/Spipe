@@ -6,13 +6,13 @@ contract does not claim a deployed enterprise policy or migration service.
 
 ## Common and workspace identity
 
-A direct SPipe checkout, project-pinned common, and a global `~/spipe` checkout
+A direct SPipe checkout, project-pinned common, and a global `~/.spipe` checkout
 expose the same common surfaces. Resolve common independently from the private
 workspace. A direct checkout may be the logical workspace when explicitly
 configured; ordinary setup must not infer permission to create private trees in
-a source repository. A separate workspace uses `~/.spipe/common -> ~/spipe`.
+a source repository. A separate workspace uses `~/spipe/common -> ~/.spipe`.
 
-The canonical global common is `~/spipe`. Simple's preferred project common route
+The canonical global common is `~/.spipe`. Simple's preferred project common route
 is `.spipe/common`, pointing or resolving to that checkout. Discovery checks this
 route before legacy `.spipe/spipe` and `.spipe/spipe_project` candidates. The shared
 locator owns ordering and compatibility validation; prompt files consume its

@@ -7,11 +7,16 @@ description: Research through authorized SPipe common, company, organization, pr
 
 ## Resolve common and active scopes
 
-Use the shared locator when available. `~/spipe` is the canonical global common
+Use the shared locator when available. `~/.spipe` is the canonical global common
 checkout; Simple can route project-owned `.spipe/common` to it. Resolve
 `SPIPE_HOME`, then the nearest project `.spipe/common`, `.spipe/spipe`,
-`.spipe/spipe_project`, or identified `.spipe` before `~/spipe`,
-`~/.spipe/common`, an identified direct checkout, and the legacy home package.
+`.spipe/spipe_project`, or identified `.spipe` before `~/.spipe`,
+`~/spipe/common`, legacy `~/spipe`, legacy `~/.spipe/common`, and an
+identified direct checkout.
+Private/local state defaults to `~/spipe`, with `~/spipe/common -> ~/.spipe`.
+`SPIPE_WORKSPACE` may select a different private root; `SPIPE_HOME` selects core.
+Do not put private research or runtime state into the core checkout. Preserve
+explicit roots; occupied old inverse layouts need reviewed migration.
 Validate package identity and project revision requirements; an
 incompatible requirement needs an explicit diagnostic and retained approved
 legacy route, not a silent pin upgrade. Do not scan arbitrary home-directory

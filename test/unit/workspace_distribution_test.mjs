@@ -193,3 +193,32 @@ test('project legacy pin wins when a global common checkout also exists', t => {
     if (previousSpipeHome === undefined) delete process.env.SPIPE_HOME; else process.env.SPIPE_HOME = previousSpipeHome;
   }
 });
+
+test('default home layout installs hidden core and routes private workspace without modifying core', t => {
+  const f = fixture(t), home = join(f.root, 'home'); mkdirSync(home);
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  for (const key of ['SPIPE_HOME', 'SPIPE_WORKSPACE', 'SPIPE_CONFIG']) delete env[key];
+  const run = (script, args) => {
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url)), ...args], { cwd: f.root, env, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const installed = run('install-spipe.mjs', ['--upstream', f.upstream, '--allow-local-source', '--common-ref', f.pin, '--apply']);
+  assert.equal(installed.checkout, join(home, '.spipe'));
+  assert.equal(installed.workspace, join(home, 'spipe'));
+  assert.equal(realpathSync(join(home, 'spipe/common')), realpathSync(join(home, '.spipe')));
+  const workspace = run('setup-spipe-workspace.mjs', ['--user', 'alice', '--host', 'build-01', '--apply']);
+  assert.equal(workspace.root, join(home, 'spipe'));
+  assert.equal(realpathSync(workspace.common), realpathSync(join(home, '.spipe')));
+  assert.equal(git(join(home, '.spipe'), ['status', '--porcelain']), '');
+  assert.equal(existsSync(join(home, 'spipe/users/alice/scope.json')), true);
+  writeFileSync(join(home, 'spipe/config.sdn'), 'spipe:\n  branch: custom\n');
+  assert.equal(run('install-spipe.mjs', ['--checkout', join(home, 'other-core'), '--workspace', join(home, 'other-workspace')]).branch, 'custom');
+});
+
+test('installer refuses a core checkout as private workspace without creating links', t => {
+  const f = fixture(t);
+  assert.throws(() => install({ ...f.options, workspace: f.upstream, apply: true }), /existing SPipe core/);
+  assert.equal(existsSync(join(f.upstream, 'common')), false);
+  assert.equal(git(f.upstream, ['status', '--porcelain']), '');
+});

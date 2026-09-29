@@ -73,7 +73,7 @@ export function source(value, localAllowed = false) {
 }
 export function config(options) {
   const explicit = options.config || process.env.SPIPE_CONFIG;
-  const file = explicit ? pathValue(explicit) : isPackage(process.cwd()) && existsSync(join(process.cwd(), 'config.sdn')) ? join(process.cwd(), 'config.sdn') : join(homedir(), '.spipe', 'config.sdn');
+  const file = explicit ? pathValue(explicit) : isPackage(process.cwd()) && existsSync(join(process.cwd(), 'config.sdn')) ? join(process.cwd(), 'config.sdn') : join(pathValue(process.env.SPIPE_WORKSPACE || join(homedir(), 'spipe')), 'config.sdn');
   const out = {};
   if (!existsSync(file)) { if (explicit) throw Error('Selected configuration is missing'); return out; }
   let section = false;

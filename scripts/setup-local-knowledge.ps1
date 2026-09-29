@@ -4,13 +4,14 @@ param(
     [string]$CommonUrl = "https://github.com/ormastes/Spipe.git",
     [string]$Organization = "",
     [string]$Project = "",
+    [switch]$AllowLocalSource,
     [switch]$Yes
 )
 
 $ErrorActionPreference = "Stop"
 if ($Mode -eq "") { $Mode = Read-Host "Setup mode (user/project) [user]"; if ($Mode -eq "") { $Mode = "user" } }
 if ($Destination -eq "") {
-    if ($Mode -eq "user") { $Destination = Join-Path $HOME ".spipe" }
+    if ($Mode -eq "user") { $Destination = if ($env:SPIPE_WORKSPACE) { $env:SPIPE_WORKSPACE } else { Join-Path $HOME "spipe" } }
     else { $Destination = (& git rev-parse --show-toplevel).Trim() }
 }
 $Destination = [IO.Path]::GetFullPath($Destination)
@@ -20,7 +21,9 @@ foreach ($Entry in @(@("organization", $Organization), @("project", $Project))) 
 }
 
 if ($Mode -eq "user") {
-    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    $SourceOptions = if ($AllowLocalSource) { @("--allow-local-source") } else { @() }
+    & node (Join-Path $PSScriptRoot "install-spipe.mjs") --workspace $Destination --upstream $CommonUrl @SourceOptions --apply
+    if ($LASTEXITCODE -ne 0) { throw "SPipe core installation failed; private setup stopped" }
     if (-not (Test-Path (Join-Path $Destination ".git"))) { & git -C $Destination init | Out-Null }
     foreach ($Name in @("organization", "projects", "local")) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Destination $Name) | Out-Null
@@ -28,10 +31,7 @@ if ($Mode -eq "user") {
     $Ignore = Join-Path $Destination ".gitignore"
     if (-not (Test-Path $Ignore)) { Set-Content -NoNewline:$false $Ignore "local/" }
     elseif (-not (Select-String -Quiet -SimpleMatch "local/" $Ignore)) { Add-Content $Ignore "`nlocal/" }
-    $CommonPath = Join-Path $Destination ".spipe"
-    $Gitlink = (& git -C $Destination ls-files --stage -- .spipe) -join "`n"
-    if (-not (Test-Path $CommonPath)) { & git -C $Destination submodule add -- $CommonUrl .spipe }
-    elseif (-not $Gitlink.StartsWith("160000 ")) { throw "Occupied non-submodule target: $CommonPath" }
+
 } elseif ($Mode -eq "project") {
     & git -C $Destination rev-parse --git-dir | Out-Null
     $CommonRoute = Join-Path $Destination ".spipe/common/package.json"
