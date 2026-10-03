@@ -32,6 +32,8 @@ Private/local knowledge and runtime live under `{home}/spipe`;
   evidence-grounded research and owner-correct write-back.
 - [SPipe skill](../plugin/skills/spipe/SKILL.md) — executable SPipe specs and
   review-admission rules.
+- [SPipe loop](../plugin/skills/spipe-loop/SKILL.md) — finite failure collection,
+  parallel repair and truthful diagnostic continuation.
 - [Agent/plugin bootstrap](../docs/PLUGIN_AGENT_BOOTSTRAP.md) — Claude,
   Codex, Gemini, and MCP discovery contract.
 - [Knowledge-system research](../doc/00_llm_process/knowledge/research/spipe_workspace_ownership_llm_wiki_2026-09-09.md)

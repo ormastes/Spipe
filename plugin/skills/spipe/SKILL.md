@@ -12,6 +12,18 @@ must exercise real behavior; reject placeholder passes, empty bodies, and
 unimplemented steps. Trace requirement IDs to scenarios and regenerate the
 human-readable manual from the admitted executable specification.
 
+## Executing build and test work
+
+When a task includes builds or test execution, finish the finite inventory of
+independently runnable rows after failures, retain actual counts and outcomes,
+and delegate independent root causes to parallel repair agents with isolated
+writable sources/caches. Failed prerequisites block only their dependent work.
+Use the [build/debug continuation guide](../../../wiki/build_debug_continuation.md)
+for user-authorized monitored diagnostic checker exceptions, Hello-gated compiler
+continuation, cache-preserving restarts and honest final results. Such exceptions
+never convert a failed specification or missing evidence into PASS and never
+satisfy formal admission or release gates.
+
 For repo, pull-request, session, or feature review requests, use the packaged
 `spipe_review_request_create` planning tool. Never supply or trust a caller head
 SHA. A PASS claim requires `spipe_review_admission_validate` with a configured
