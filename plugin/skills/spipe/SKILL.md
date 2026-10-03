@@ -14,6 +14,13 @@ human-readable manual from the admitted executable specification.
 
 ## Executing build and test work
 
+For Simple compiled test executables, read the
+[existing native test workflow](../../../wiki/simple_native_test_binaries.md).
+Use its existing runner and generated entries before proposing replacements.
+"Like GoogleTest" does not by itself request that dependency. Distinguish
+source discovery from counts obtained from the actual executable; use only
+listing options supported by that entry.
+
 When a task includes builds or test execution, finish the finite inventory of
 independently runnable rows after failures, retain actual counts and outcomes,
 and delegate independent root causes to parallel repair agents with isolated

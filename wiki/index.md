@@ -28,6 +28,9 @@ Private/local knowledge and runtime live under `{home}/spipe`;
 
 ## Routes
 
+- [Simple native test binaries](simple_native_test_binaries.md) — existing
+  compiled-test workflow, source discovery versus binary-owned counts, and
+  research before replacing a runner or adding a framework.
 - [Build and debug continuation](build_debug_continuation.md) — finite independent
   failure collection, parallel repairs, monitored diagnostic exceptions and
   Hello-gated provisional compiler phases.

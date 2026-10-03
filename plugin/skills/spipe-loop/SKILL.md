@@ -5,6 +5,12 @@ description: Run a bounded SPipe check-and-repair or daily-debug evidence cycle.
 
 # SPipe Loop
 
+For Simple test binaries, first trace the
+[existing native runner and listing behavior](../../../wiki/simple_native_test_binaries.md).
+Repair that workflow using actual build/run evidence. Do not invent an
+aggregate registry or listing flag, or infer a foreign framework dependency
+from a comparison such as "like GoogleTest".
+
 Run one finite discovery/build/test inventory through all independently runnable
 rows, recording every failure rather than stopping the whole workflow at the
 first one. Group failures by cause and delegate independent repairs to parallel
