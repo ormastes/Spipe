@@ -28,6 +28,9 @@ Private/local knowledge and runtime live under `{home}/spipe`;
 
 ## Routes
 
+- [Build and debug continuation](build_debug_continuation.md) — finite independent
+  failure collection, parallel repairs, monitored diagnostic exceptions and
+  Hello-gated provisional compiler phases.
 - [Scope resolution](../doc/00_llm_process/knowledge/llm_wiki_scope_resolution.md) — context, ownership, and runtime contracts.
 - [Local setup](../doc/00_llm_process/knowledge/local_ownership_setup.md) — available setup and planned workspace layout.
 - [Migration](../doc/00_llm_process/knowledge/local_migration.md) — classify legacy content and preserve pins.
