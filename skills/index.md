@@ -31,7 +31,8 @@ Private/local knowledge and runtime live under `{home}/spipe`;
 - [SPipe research skill](../plugin/skills/spipe-research/SKILL.md) — scope-aware
   evidence-grounded research and owner-correct write-back.
 - [SPipe skill](../plugin/skills/spipe/SKILL.md) — executable SPipe specs and
-  review-admission rules.
+  review-admission rules; see the [Simple native test workflow](../wiki/simple_native_test_binaries.md)
+  for existing compiled-runner and listing behavior.
 - [SPipe loop](../plugin/skills/spipe-loop/SKILL.md) — finite failure collection,
   parallel repair and truthful diagnostic continuation.
 - [Agent/plugin bootstrap](../docs/PLUGIN_AGENT_BOOTSTRAP.md) — Claude,
