@@ -6,7 +6,7 @@ Use this programming guide when a project has configurable implementations behin
 
 Preserve the configured implementation and the importing module's family. A candidate fallback list is a lookup mechanism, not permission to overwrite an explicit selection. Compare discovery, frozen export selection, and HIR owner resolution: a fix in one stage does not prove parity in another. A deliberate physical leaf binding should preserve the public API and explain its boundary rather than globally pinning every import to one family.
 
-Simple's original design keeps stable interfaces with configurable GC/no-GC and sync/async implementations. Rust/Pure-Simple resolver parity is active work; do not report it fixed based only on source review. The maintained project guide is [configured variants and aggregate validation](https://github.com/ormastes/simple/blob/release/1.0/doc/07_guide/compiler/configured_variants_and_aggregate_validation.md).
+Simple's original design keeps stable interfaces with configurable GC/no-GC and sync/async implementations. Rust/Pure-Simple resolver parity is active work; do not report it fixed based only on source review. The project guide is [configured variants and aggregate validation](https://github.com/ormastes/simple/blob/3af5e46e0b4/doc/07_guide/compiler/configured_variants_and_aggregate_validation.md), pinned to this guidance update.
 
 ## Actual evidence
 
