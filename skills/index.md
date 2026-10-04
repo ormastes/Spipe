@@ -28,6 +28,10 @@ Private/local knowledge and runtime live under `{home}/spipe`;
 
 ## Routes
 
+- [Configured variants and compiler evidence](../wiki/configured_variants_and_compiler_evidence.md)
+  — programming guidance for stable interfaces, selected variants and actual
+  aggregate/runtime/cache evidence; managed skill bodies remain generated.
+
 - [SPipe research skill](../plugin/skills/spipe-research/SKILL.md) — scope-aware
   evidence-grounded research and owner-correct write-back.
 - [SPipe skill](../plugin/skills/spipe/SKILL.md) — executable SPipe specs and
