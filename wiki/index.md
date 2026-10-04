@@ -48,6 +48,12 @@ Private/local knowledge and runtime live under `{home}/spipe`;
 `doc/00_llm_process/knowledge/` remains normative documentation about the
 knowledge system. Its contents are classified individually before any migration.
 
+## Programming evidence
+
+- [Configured variants and compiler evidence](configured_variants_and_compiler_evidence.md)
+  — preserve selected implementation/importer family, distinguish compiler
+  generations, and validate aggregates with actual providers and test results.
+
 ## Boundary
 
 `runtime/<user>/<host>/` contains reconstructible `cache/`, retained `state/`,

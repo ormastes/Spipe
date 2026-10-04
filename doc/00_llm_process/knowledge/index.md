@@ -9,6 +9,9 @@ the [2026-09-09 research artifact](research/spipe_workspace_ownership_llm_wiki_2
 
 ## Routes
 
+- [Configured variants and compiler evidence](../../../wiki/configured_variants_and_compiler_evidence.md)
+  — maintained common programming guide; project design remains authoritative.
+
 - [Local ownership and setup](local_ownership_setup.md)
 - [LLM-wiki scope resolution](llm_wiki_scope_resolution.md)
 - [Local migration](local_migration.md)
