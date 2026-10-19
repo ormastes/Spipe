@@ -31,6 +31,13 @@ continuation, cache-preserving restarts and honest final results. Such exception
 never convert a failed specification or missing evidence into PASS and never
 satisfy formal admission or release gates.
 
+This continuation strategy is the common build-fix default: assign memory or
+performance diagnostic defects to a parallel repair owner, honor the user's
+scoped checker exception, and continue collecting independent logic errors and
+failed objects. Preserve producer-bound caches and successes; retry affected
+rows only. Report the live checker settings and actual exit/measurement states,
+not a prepared-but-unapplied bypass or a manufactured PASS.
+
 For repo, pull-request, session, or feature review requests, use the packaged
 `spipe_review_request_create` planning tool. Never supply or trust a caller head
 SHA. A PASS claim requires `spipe_review_admission_validate` with a configured
