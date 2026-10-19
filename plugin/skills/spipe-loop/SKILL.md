@@ -17,6 +17,13 @@ first one. Group failures by cause and delegate independent repairs to parallel
 agents with explicit file/cache ownership. Let healthy sibling jobs finish;
 missing prerequisites block only their dependent rows.
 
+Treat this as the common build-fix strategy: route memory/performance defects
+to a separate repair owner (using the requested model, including Astra when
+selected), continue independent logic/object discovery, and retain an exact
+failed-object ledger. User-authorized optional diagnostics may be disabled or
+nonblocking; incomplete measurements, crashes and failed tests stay explicit.
+Do not restart healthy jobs just to apply a future checker setting.
+
 Follow the [build/debug continuation guide](../../../wiki/build_debug_continuation.md).
 Record scoped user-authorized time, memory or other checker bypasses in separate
 DIAGNOSTIC attempts with resource/progress monitoring, preserved failed receipts
