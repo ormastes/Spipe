@@ -3,13 +3,13 @@
 use lifecycle.contracts.{LifecycleRunV1, GateRequirementV1, GateEvidenceV1,
     GateWaiverV1, LifecycleAuthorityV1}
 
-val FIXTURE_SOURCE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-val FIXTURE_DIGEST = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-val FIXTURE_EXECUTABLE = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-val FIXTURE_INPUTS = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-val FIXTURE_EVIDENCE = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+pub val FIXTURE_SOURCE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+pub val FIXTURE_DIGEST = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+pub val FIXTURE_EXECUTABLE = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+pub val FIXTURE_INPUTS = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+pub val FIXTURE_EVIDENCE = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
-class FixtureLifecycleAuthorityV1 with LifecycleAuthorityV1:
+pub class FixtureLifecycleAuthorityV1 with LifecycleAuthorityV1:
     policy_allowed: bool = true
     evidence_verified: bool = true
     waiver_verified: bool = true
@@ -35,18 +35,18 @@ class FixtureLifecycleAuthorityV1 with LifecycleAuthorityV1:
         self.policy_allowed and run.policy_sha256 == FIXTURE_DIGEST and target == "test_ready" and
             requirements.len() == 1 and self.authorize_gate(run, requirements[0])
 
-fn fixture_run() -> LifecycleRunV1:
+pub fn fixture_run() -> LifecycleRunV1:
     LifecycleRunV1(schema: "spipe-lifecycle-run/1", run_id: "run-fixture",
         source_revision: FIXTURE_SOURCE, policy_sha256: FIXTURE_DIGEST,
         state: "designed", generation: 4)
 
-fn fixture_requirement() -> GateRequirementV1:
+pub fn fixture_requirement() -> GateRequirementV1:
     GateRequirementV1(gate_id: "acceptance.red", target_state: "test_ready",
         executable_sha256: FIXTURE_EXECUTABLE, selector: "lifecycle.acceptance",
         inputs_sha256: FIXTURE_INPUTS, expected_outcome: "red", minimum_cases: 2,
         require_negative: true, allow_not_applicable: false)
 
-fn fixture_evidence() -> GateEvidenceV1:
+pub fn fixture_evidence() -> GateEvidenceV1:
     GateEvidenceV1(schema: "spipe-lifecycle-evidence/1", run_id: "run-fixture", run_generation: 4,
         gate_id: "acceptance.red", source_revision: FIXTURE_SOURCE, policy_sha256: FIXTURE_DIGEST,
         executable_sha256: FIXTURE_EXECUTABLE, selector: "lifecycle.acceptance",
@@ -55,7 +55,7 @@ fn fixture_evidence() -> GateEvidenceV1:
         negative_failed_cases: 1, rationale: "positive and negative scenarios failed before implementation",
         issued_at_ms: 100, expires_at_ms: 200)
 
-fn fixture_waiver() -> GateWaiverV1:
+pub fn fixture_waiver() -> GateWaiverV1:
     GateWaiverV1(schema: "spipe-lifecycle-waiver/1", run_id: "run-fixture", run_generation: 4, gate_id: "acceptance.red",
         source_revision: FIXTURE_SOURCE, policy_sha256: FIXTURE_DIGEST,
         authority_id: "fixture-owner", reviewer_id: "fixture-reviewer",

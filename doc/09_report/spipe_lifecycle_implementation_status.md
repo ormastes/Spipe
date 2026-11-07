@@ -19,6 +19,10 @@ Filesystem review found retained bounded file owners, but the trusted retained-d
 
 ## Review and verification
 
+The user subsequently requested landing the fixes and implementation after review. The authorized landing is an experimental, unwired foundation; it does not waive runtime qualification for activating lifecycle commands or claim completion of M0–M6. The existing Linux/Windows CI checks passed, but the inspected Linux job explicitly reports `spipe_simple_build=skip (no Simple runtime; set SPIPE_SIMPLE)`. Its green build is not lifecycle compilation or SSpec evidence.
+
+The final separate exact-head review also found private fixture declarations imported by sibling specs. Those shared test classes, constants and helper functions are now explicitly public. Compilation and runtime evidence remain NOT_RUN after this source fix.
+
 A separate agent performed bounded source review. Findings addressed include impossible test-count partitions, generation replay, failed executions labeled N/A, incomplete policy fixture matching, exact waiver input bindings, self/chained canonical projections and projection route mismatches. Source review is not compiler/runtime verification.
 
 `git diff --cached --check` passed for the initial staged sources. No executable specs are tracked under `doc/06_spec`. No syntax, test, security, performance, coverage or release PASS is claimed from these housekeeping checks.
