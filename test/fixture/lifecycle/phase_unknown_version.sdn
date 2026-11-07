@@ -1,0 +1,10 @@
+schema: spipe-phase-contract/2
+phase_id: acceptance.bdd
+capability: delivery.bdd
+inputs: [selected_requirements, design]
+outputs: [acceptance_scenarios, red_receipt]
+entry_gates: [design.review]
+exit_gates: [acceptance.red]
+authority_scope: workspace_only
+policy_sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+max_iterations: 3

@@ -1,0 +1,71 @@
+# @req REQ-002 REQ-003 REQ-006 REQ-009
+# @cover src/lifecycle/state.spl
+use std.spec.*
+use lifecycle.contracts.{LifecycleRunV1}
+use lifecycle.state.{transition_lifecycle_run, legal_lifecycle_transition}
+use .lifecycle_fixtures.*
+
+fn transition_error(result: Result<LifecycleRunV1, text>) -> text:
+    match result:
+        case Ok(run): "unexpected_success:" + run.state
+        case Err(reason): reason
+
+describe "Parent-authoritative lifecycle transitions":
+    it "advances a checked run and preserves the input value":
+        step("Admit test-ready against the expected generation")
+        val run = fixture_run()
+        val result = transition_lifecycle_run(run, "test_ready", 4,
+            [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), 150)
+        match result:
+            case Ok(updated):
+                expect(updated.state).to_equal("test_ready")
+                expect(updated.generation).to_equal(5)
+            case Err(reason): fail(reason)
+        expect(run.state).to_equal("designed")
+        expect(run.generation).to_equal(4)
+
+    it "rejects a stale concurrent writer":
+        step("Attempt a commit using an old generation")
+        val result = transition_lifecycle_run(fixture_run(), "test_ready", 3,
+            [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(transition_error(result)).to_equal("stale_generation")
+
+    it "rejects a caller-selected empty gate set":
+        step("Try to omit the target state's required acceptance gate")
+        val result = transition_lifecycle_run(fixture_run(), "test_ready", 4,
+            [], [], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(transition_error(result)).to_equal("unauthorized_transition_policy")
+
+    it "does not advance when execution evidence is missing":
+        step("Enter test-ready before any acceptance run")
+        val result = transition_lifecycle_run(fixture_run(), "test_ready", 4,
+            [fixture_requirement()], [], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(transition_error(result)).to_equal("acceptance.red:not_run")
+
+    it "rejects a weakened gate set even when its gate ID is unchanged":
+        step("Attempt admission after removing the negative-case requirement")
+        var requirement = fixture_requirement()
+        requirement.require_negative = false
+        val result = transition_lifecycle_run(fixture_run(), "test_ready", 4,
+            [requirement], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(transition_error(result)).to_equal("unauthorized_transition_policy")
+
+    it "revalidates expiry at the transition boundary":
+        step("Attempt admission after a previously valid receipt expires")
+        val result = transition_lifecycle_run(fixture_run(), "test_ready", 4,
+            [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), 200)
+        expect(transition_error(result)).to_equal("acceptance.red:invalid_evidence_time")
+
+    it "rejects skipping directly from design to release":
+        step("Attempt an illegal state jump")
+        val result = transition_lifecycle_run(fixture_run(), "released", 4,
+            [], [], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(transition_error(result)).to_equal("illegal_transition")
+
+    it "keeps terminal states terminal and rollback scoped to deployed states":
+        step("Inspect exceptional-state boundaries")
+        expect(legal_lifecycle_transition("closed", "investigating")).to_equal(false)
+        expect(legal_lifecycle_transition("abandoned", "defined")).to_equal(false)
+        expect(legal_lifecycle_transition("designed", "rolled_back")).to_equal(false)
+        expect(legal_lifecycle_transition("released", "rolled_back")).to_equal(true)
+        expect(legal_lifecycle_transition("rework", "released")).to_equal(false)

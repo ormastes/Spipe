@@ -1,0 +1,15 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-tool-permission/1
+fields:
+  schema: text
+  permission_id: text
+  role_id: text
+  tool: text
+  environment: text
+  target: text
+  effect: "enum:allow|deny"
+  operation: "enum:discover|read|cache_read|write|export|debug_attach|deploy"
+  authority_id: text
+  authorization_receipt_sha256: sha256
+  issued_at_ms: nonnegative
+  expires_at_ms: nonnegative

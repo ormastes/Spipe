@@ -1,0 +1,15 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-agent-role/1
+fields:
+  schema: text
+  role_id: text
+  phases: texts
+  skills: texts
+  tools: texts
+  model_tier: text
+  escalation: texts
+  max_iterations: nonnegative
+  token_budget: nonnegative
+  time_budget_ms: nonnegative
+  side_effects: "enum:read_only|workspace_only|authorized_external"
+  independent_review_required: boolean

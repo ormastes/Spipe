@@ -1,0 +1,107 @@
+"""Versioned lifecycle values and trusted composition ports; no implicit I/O."""
+
+pub struct LifecycleRunV1:
+    schema: text
+    run_id: text
+    source_revision: text
+    policy_sha256: text
+    state: text
+    generation: i64
+
+pub struct GateRequirementV1:
+    gate_id: text
+    target_state: text
+    executable_sha256: text
+    selector: text
+    inputs_sha256: text
+    expected_outcome: text
+    minimum_cases: i64
+    require_negative: bool
+    allow_not_applicable: bool
+
+pub struct GateEvidenceV1:
+    schema: text
+    run_id: text
+    run_generation: i64
+    gate_id: text
+    source_revision: text
+    policy_sha256: text
+    executable_sha256: text
+    selector: text
+    inputs_sha256: text
+    evidence_sha256: text
+    outcome: text
+    executed_cases: i64
+    failed_cases: i64
+    negative_cases: i64
+    negative_failed_cases: i64
+    rationale: text
+    issued_at_ms: i64
+    expires_at_ms: i64
+
+pub struct GateWaiverV1:
+    schema: text
+    run_id: text
+    run_generation: i64
+    gate_id: text
+    source_revision: text
+    policy_sha256: text
+    executable_sha256: text
+    selector: text
+    inputs_sha256: text
+    authority_id: text
+    reviewer_id: text
+    reason: text
+    compensating_control: text
+    evidence_sha256: text
+    issued_at_ms: i64
+    expires_at_ms: i64
+
+pub struct GateDecisionV1:
+    outcome: text
+    reason: text
+    evidence_sha256: text
+
+# These ports are composed by the trusted service, never deserialized from a
+# request. Verification must authenticate the complete value, not just a digest
+# supplied by its author. An absent authority must reject, not self-attest.
+pub trait LifecycleAuthorityV1:
+    fn authorize_gate(self, run: LifecycleRunV1, requirement: GateRequirementV1) -> bool
+    fn verify_evidence(self, evidence: GateEvidenceV1) -> bool
+    fn verify_waiver(self, waiver: GateWaiverV1) -> bool
+    fn authorize_transition(self, run: LifecycleRunV1, target: text, requirements: [GateRequirementV1]) -> bool
+
+pub fn lifecycle_has_text(value: text) -> bool:
+    value.trim() != "" and value.len() <= 4096
+
+pub fn lifecycle_hex(value: text, size: i64) -> bool:
+    if value.len() != size: return false
+    var index = 0
+    while index < value.len():
+        val digit = value.byte_at(index)
+        if not ((digit >= 48 and digit <= 57) or (digit >= 97 and digit <= 102)): return false
+        index = index + 1
+    true
+
+pub fn lifecycle_revision(value: text) -> bool:
+    lifecycle_hex(value, 40) or lifecycle_hex(value, 64)
+
+pub fn lifecycle_state_index(state: text) -> i64:
+    val states = ["proposed", "investigating", "defined", "designed", "test_ready",
+        "implementing", "verifying", "releasable", "released", "observing", "closed"]
+    var index = 0
+    for candidate in states:
+        if state == candidate: return index
+        index = index + 1
+    -1
+
+pub fn lifecycle_exceptional_state(state: text) -> bool:
+    state == "blocked" or state == "rework" or state == "abandoned" or state == "rolled_back"
+
+pub fn lifecycle_valid_run(run: LifecycleRunV1) -> bool:
+    run.schema == "spipe-lifecycle-run/1" and lifecycle_has_text(run.run_id) and
+        lifecycle_revision(run.source_revision) and lifecycle_hex(run.policy_sha256, 64) and
+        run.generation >= 0 and (lifecycle_state_index(run.state) >= 0 or lifecycle_exceptional_state(run.state))
+
+pub fn lifecycle_valid_time(issued: i64, expires: i64, now: i64) -> bool:
+    now >= 0 and issued >= 0 and issued <= now and expires > issued and now < expires

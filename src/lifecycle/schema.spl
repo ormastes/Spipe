@@ -1,0 +1,83 @@
+"""Closed versioned lifecycle records using the host strict SDN parser."""
+
+use std.common.sdn.value.{SdnValue}
+use std.common.sdn.strict_v1.{sdn_parse_strict_v1}
+use std.common.sdn.strict_types_v1.{SdnStrictLimitsV1}
+use .contracts.{lifecycle_hex, lifecycle_revision, lifecycle_has_text}
+
+fn lifecycle_parse_sdn(source: text) -> Result<SdnValue, text>:
+    val limits = SdnStrictLimitsV1(max_source_bytes: 65536, max_depth: 8,
+        max_nodes: 4096, max_rows: 256, max_cells: 4096, max_columns: 64)
+    match sdn_parse_strict_v1(source, limits):
+        case Ok(document): Ok(document.value)
+        case Err(issue): Err("invalid_sdn:" + issue.code)
+
+fn lifecycle_field_type(value: SdnValue, kind: text) -> bool:
+    match value:
+        case String(content):
+            if kind == "optional_text": return content.len() <= 4096
+            if kind == "text": return lifecycle_has_text(content)
+            if kind == "sha256": return lifecycle_hex(content, 64)
+            if kind == "revision": return lifecycle_revision(content)
+            if kind.starts_with("enum:"):
+                return kind.substring(5).split("|").contains(content)
+            return false
+        case Int(number): return kind == "integer" or (kind == "nonnegative" and number >= 0)
+        case Bool(_): return kind == "boolean"
+        case Array(items):
+            if kind != "texts" and kind != "digests": return false
+            if items.len() > 256: return false
+            var seen: [text] = []
+            for item in items:
+                match item:
+                    case String(content):
+                        if not lifecycle_has_text(content) or seen.contains(content): return false
+                        if kind == "digests" and not lifecycle_hex(content, 64): return false
+                        seen.push(content)
+                    case _: return false
+            return true
+        case _: false
+
+# schema_source comes from the service's pinned canonical schema artifact, not
+# from request data. This function validates shape, not source/receipt authority.
+pub fn read_lifecycle_record_v1(source: text, schema_source: text,
+    expected_schema: text) -> Result<SdnValue, text>:
+    if not lifecycle_has_text(expected_schema): return Err("invalid_expected_schema")
+    val descriptor = lifecycle_parse_sdn(schema_source)?
+    val record = lifecycle_parse_sdn(source)?
+    match descriptor:
+        case Dict(spec):
+            if spec.len() != 3 or not spec.contains("schema") or not spec.contains("record_schema") or not spec.contains("fields"):
+                return Err("invalid_schema_descriptor")
+            match spec["schema"]:
+                case String(version):
+                    if version != "spipe-lifecycle-schema/1": return Err("unsupported_descriptor_schema")
+                case _: return Err("invalid_schema_descriptor")
+            match spec["record_schema"]:
+                case String(version):
+                    if version != expected_schema: return Err("schema_authority_mismatch")
+                case _: return Err("invalid_schema_descriptor")
+            match spec["fields"]:
+                case Dict(fields):
+                    if fields.len() == 0 or fields.len() > 64 or not fields.contains("schema"):
+                        return Err("invalid_schema_fields")
+                    match record:
+                        case Dict(values):
+                            if values.len() != fields.len(): return Err("unknown_or_missing_fields")
+                            for key in values.keys():
+                                if not fields.contains(key): return Err("unknown_field:" + key)
+                            for key in fields.keys():
+                                if not lifecycle_has_text(key): return Err("invalid_schema_field_name")
+                                if not values.contains(key): return Err("missing_field:" + key)
+                                match fields[key]:
+                                    case String(kind):
+                                        if not lifecycle_field_type(values[key], kind): return Err("invalid_field:" + key)
+                                    case _: return Err("invalid_schema_field_type")
+                            match values["schema"]:
+                                case String(version):
+                                    if version != expected_schema: return Err("unsupported_record_schema")
+                                case _: return Err("invalid_record_schema")
+                            Ok(record)
+                        case _: Err("record_must_be_mapping")
+                case _: Err("invalid_schema_fields")
+        case _: Err("schema_must_be_mapping")

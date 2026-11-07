@@ -1,0 +1,88 @@
+"""Evaluate exact-bound, authority-checked gate evidence at the time of use."""
+
+use .contracts.{LifecycleRunV1, GateRequirementV1, GateEvidenceV1, GateWaiverV1,
+    GateDecisionV1, LifecycleAuthorityV1, lifecycle_valid_run, lifecycle_has_text,
+    lifecycle_hex, lifecycle_valid_time, lifecycle_state_index}
+
+fn gate_failure(reason: text) -> GateDecisionV1:
+    GateDecisionV1(outcome: "fail", reason: reason, evidence_sha256: "")
+
+fn valid_gate_requirement(requirement: GateRequirementV1) -> bool:
+    lifecycle_has_text(requirement.gate_id) and lifecycle_state_index(requirement.target_state) >= 0 and
+        lifecycle_hex(requirement.executable_sha256, 64) and lifecycle_has_text(requirement.selector) and
+        lifecycle_hex(requirement.inputs_sha256, 64) and requirement.minimum_cases > 0 and
+        (requirement.expected_outcome == "pass" or requirement.expected_outcome == "red") and
+        not (requirement.require_negative and requirement.allow_not_applicable)
+
+fn gate_waiver_matches(run: LifecycleRunV1, requirement: GateRequirementV1,
+    waiver: GateWaiverV1, now_ms: i64) -> bool:
+    waiver.schema == "spipe-lifecycle-waiver/1" and waiver.run_id == run.run_id and waiver.run_generation == run.generation and
+        waiver.gate_id == requirement.gate_id and waiver.source_revision == run.source_revision and
+        waiver.policy_sha256 == run.policy_sha256 and waiver.executable_sha256 == requirement.executable_sha256 and
+        waiver.selector == requirement.selector and waiver.inputs_sha256 == requirement.inputs_sha256 and lifecycle_has_text(waiver.authority_id) and
+        lifecycle_has_text(waiver.reviewer_id) and lifecycle_has_text(waiver.reason) and
+        lifecycle_has_text(waiver.compensating_control) and lifecycle_hex(waiver.evidence_sha256, 64) and
+        lifecycle_valid_time(waiver.issued_at_ms, waiver.expires_at_ms, now_ms)
+
+fn gate_evidence_binding(run: LifecycleRunV1, requirement: GateRequirementV1,
+    evidence: GateEvidenceV1, now_ms: i64) -> text:
+    if evidence.schema != "spipe-lifecycle-evidence/1": return "unsupported_evidence_schema"
+    if evidence.run_id != run.run_id or evidence.gate_id != requirement.gate_id:
+        return "evidence_scope_mismatch"
+    if evidence.run_generation != run.generation: return "stale_evidence_generation"
+    if evidence.source_revision != run.source_revision: return "stale_source_revision"
+    if evidence.policy_sha256 != run.policy_sha256: return "stale_policy"
+    if evidence.executable_sha256 != requirement.executable_sha256: return "stale_executable"
+    if evidence.selector != requirement.selector: return "selector_mismatch"
+    if evidence.inputs_sha256 != requirement.inputs_sha256: return "stale_inputs"
+    if not lifecycle_hex(evidence.evidence_sha256, 64): return "missing_evidence_digest"
+    if not lifecycle_valid_time(evidence.issued_at_ms, evidence.expires_at_ms, now_ms):
+        return "invalid_evidence_time"
+    if evidence.executed_cases < 0 or evidence.failed_cases < 0 or evidence.negative_cases < 0 or evidence.negative_failed_cases < 0:
+        return "invalid_case_counts"
+    if evidence.failed_cases > evidence.executed_cases or evidence.negative_cases > evidence.executed_cases:
+        return "invalid_case_counts"
+    if evidence.negative_failed_cases > evidence.negative_cases or evidence.negative_failed_cases > evidence.failed_cases:
+        return "invalid_case_counts"
+    if evidence.failed_cases - evidence.negative_failed_cases > evidence.executed_cases - evidence.negative_cases:
+        return "invalid_case_counts"
+    ""
+
+# Receipts and waivers are bounded and filtered by the caller's checked index;
+# duplicate applicable records fail instead of selecting whichever passed.
+pub fn evaluate_lifecycle_gate(run: LifecycleRunV1, requirement: GateRequirementV1,
+    receipts: [GateEvidenceV1], waivers: [GateWaiverV1],
+    authority: LifecycleAuthorityV1, now_ms: i64) -> GateDecisionV1:
+    if not lifecycle_valid_run(run) or now_ms < 0: return gate_failure("invalid_run_or_clock")
+    if not valid_gate_requirement(requirement): return gate_failure("invalid_gate_requirement")
+    if not authority.authorize_gate(run, requirement): return gate_failure("unauthorized_gate_policy")
+    if receipts.len() > 1 or waivers.len() > 1: return gate_failure("ambiguous_gate_evidence")
+    if waivers.len() == 1:
+        val waiver = waivers[0]
+        if not gate_waiver_matches(run, requirement, waiver, now_ms): return gate_failure("invalid_or_expired_waiver")
+        if not authority.verify_waiver(waiver): return gate_failure("unauthorized_waiver")
+        return GateDecisionV1(outcome: "waived", reason: waiver.reason, evidence_sha256: waiver.evidence_sha256)
+    if receipts.len() == 0: return gate_failure("not_run")
+    val evidence = receipts[0]
+    val binding_error = gate_evidence_binding(run, requirement, evidence, now_ms)
+    if binding_error != "": return gate_failure(binding_error)
+    if not authority.verify_evidence(evidence): return gate_failure("unauthenticated_evidence")
+    if evidence.outcome == "not_applicable":
+        if not requirement.allow_not_applicable or not lifecycle_has_text(evidence.rationale):
+            return gate_failure("unjustified_not_applicable")
+        if evidence.executed_cases != 0 or evidence.failed_cases != 0 or evidence.negative_cases != 0 or evidence.negative_failed_cases != 0:
+            return gate_failure("execution_cannot_be_not_applicable")
+        return GateDecisionV1(outcome: "not_applicable", reason: evidence.rationale, evidence_sha256: evidence.evidence_sha256)
+    if evidence.outcome == "not_run": return gate_failure("not_run")
+    if evidence.executed_cases < requirement.minimum_cases: return gate_failure("insufficient_executed_cases")
+    if requirement.expected_outcome == "red":
+        if evidence.outcome != "red" or evidence.failed_cases == 0: return gate_failure("red_first_not_observed")
+        if requirement.require_negative and evidence.negative_failed_cases == 0:
+            return gate_failure("negative_red_not_observed")
+        if requirement.require_negative and evidence.failed_cases == evidence.negative_failed_cases:
+            return gate_failure("positive_red_not_observed")
+    else:
+        if evidence.outcome != "pass" or evidence.failed_cases != 0: return gate_failure("test_failure")
+        if requirement.require_negative and evidence.negative_cases == 0:
+            return gate_failure("negative_cases_not_executed")
+    GateDecisionV1(outcome: "pass", reason: "checked_evidence", evidence_sha256: evidence.evidence_sha256)

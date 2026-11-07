@@ -1,0 +1,53 @@
+"""Parent-authoritative lifecycle transition admission; no storage mutation."""
+
+use .contracts.{LifecycleRunV1, GateRequirementV1, GateEvidenceV1, GateWaiverV1,
+    LifecycleAuthorityV1, lifecycle_state_index, lifecycle_exceptional_state, lifecycle_valid_run}
+use .gate.{evaluate_lifecycle_gate}
+
+pub fn legal_lifecycle_transition(previous: text, target: text) -> bool:
+    if previous == target or previous == "closed" or previous == "abandoned": return false
+    if target == "blocked" or target == "rework" or target == "abandoned":
+        return lifecycle_state_index(previous) >= 0 or previous == "blocked" or previous == "rework"
+    if target == "rolled_back": return previous == "released" or previous == "observing"
+    if previous == "blocked" or previous == "rework":
+        # Recovery repeats definition, design, tests or verification under the
+        # authorized full target policy; it cannot jump straight to release.
+        return target == "investigating" or target == "defined" or target == "designed" or
+            target == "test_ready" or target == "implementing" or target == "verifying"
+    if previous == "rolled_back": return target == "investigating"
+    val previous_index = lifecycle_state_index(previous)
+    previous_index >= 0 and lifecycle_state_index(target) == previous_index + 1
+
+pub fn transition_lifecycle_run(run: LifecycleRunV1, target: text, expected_generation: i64,
+    requirements: [GateRequirementV1], receipts: [GateEvidenceV1], waivers: [GateWaiverV1],
+    authority: LifecycleAuthorityV1, now_ms: i64) -> Result<LifecycleRunV1, text>:
+    if not lifecycle_valid_run(run) or now_ms < 0: return Err("invalid_run_or_clock")
+    if run.generation != expected_generation: return Err("stale_generation")
+    if run.generation == 9223372036854775807: return Err("generation_exhausted")
+    if not legal_lifecycle_transition(run.state, target): return Err("illegal_transition")
+    if requirements.len() > 64 or receipts.len() > 64 or waivers.len() > 64: return Err("gate_input_quota_exceeded")
+    # This port verifies the complete requirement set against the pinned policy,
+    # preventing an empty or attacker-selected subset from bypassing admission.
+    if not authority.authorize_transition(run, target, requirements): return Err("unauthorized_transition_policy")
+    var seen: [text] = []
+    for requirement in requirements:
+        if requirement.target_state != target: return Err("gate_target_mismatch")
+        if seen.contains(requirement.gate_id): return Err("duplicate_gate_requirement")
+        seen.push(requirement.gate_id)
+        var gate_receipts: [GateEvidenceV1] = []
+        var gate_waivers: [GateWaiverV1] = []
+        for receipt in receipts:
+            if receipt.gate_id == requirement.gate_id: gate_receipts.push(receipt)
+        for waiver in waivers:
+            if waiver.gate_id == requirement.gate_id: gate_waivers.push(waiver)
+        val decision = evaluate_lifecycle_gate(run, requirement, gate_receipts, gate_waivers, authority, now_ms)
+        if decision.outcome == "fail": return Err(requirement.gate_id + ":" + decision.reason)
+    for receipt in receipts:
+        if not seen.contains(receipt.gate_id): return Err("orphan_gate_receipt")
+    for waiver in waivers:
+        if not seen.contains(waiver.gate_id): return Err("orphan_gate_waiver")
+    # Do not accept caller-created decisions. Re-evaluate authenticated raw
+    # receipts above at commit time, then return a new immutable run value.
+    Ok(LifecycleRunV1(schema: run.schema, run_id: run.run_id,
+        source_revision: run.source_revision, policy_sha256: run.policy_sha256,
+        state: target, generation: run.generation + 1))

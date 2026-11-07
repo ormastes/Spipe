@@ -1,0 +1,13 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-phase-contract/1
+fields:
+  schema: text
+  phase_id: text
+  capability: text
+  inputs: texts
+  outputs: texts
+  entry_gates: texts
+  exit_gates: texts
+  authority_scope: text
+  policy_sha256: sha256
+  max_iterations: nonnegative
