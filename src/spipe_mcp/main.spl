@@ -295,7 +295,9 @@ fn spm_tool_text(content: text) -> text:
     "{\"content\":[{\"text\":\"" + spm_json_escape(content) + "\",\"type\":\"text\"}]}"
 
 fn spm_init_json(root: text) -> text:
-    "{\"capabilities\":{\"resources\":{},\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"spipe\",\"version\":\"" + spm_json_escape(spm_version(root)) + "\"}}"
+    # Double-quoted text collapses each escaped brace pair, including literal
+    # suffixes without interpolation. Emit both nested JSON closing braces.
+    "{\"capabilities\":{\"resources\":{},\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"spipe\",\"version\":\"" + spm_json_escape(spm_version(root)) + "\"}}}}"
 
 # --- Tool dispatch ---
 

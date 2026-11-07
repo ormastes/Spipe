@@ -50,7 +50,7 @@ function reviewProperties(fields) {
   }]));
 }
 const reviewRequestSchema = Object.freeze({ type: "object", properties: reviewProperties(reviewRequestFields), required: [...reviewRequestFields], additionalProperties: false });
-const reviewAdmissionSchema = Object.freeze({ oneOf: [independentAdmissionFields, fallbackAdmissionFields].map((fields) => ({ type: "object", properties: reviewProperties(fields), required: [...fields], additionalProperties: false })) });
+const reviewAdmissionSchema = Object.freeze({ type: "object", oneOf: [independentAdmissionFields, fallbackAdmissionFields].map((fields) => ({ type: "object", properties: reviewProperties(fields), required: [...fields], additionalProperties: false })) });
 const selfReviewRequestSchema = Object.freeze({
   type: "object",
   properties: Object.fromEntries(selfReviewRequestFields.map((field) => [field, { type: field === "pull_request" ? "integer" : "string" }])),
