@@ -1,0 +1,135 @@
+# @req REQ-004 REQ-006 REQ-008
+# @cover src/lifecycle/operations/local_owner.spl
+use std.spec.*
+use lifecycle.operations.local_owner.*
+use lifecycle.operations.offline.{query_offline_dump}
+use .lifecycle_operations_fixtures.*
+use .lifecycle_operations_local_fixtures.*
+use .lifecycle_fixtures.*
+use std.common.debug.contracts_v1.{DebugSessionId}
+use std.common.debug.service_v1.{central_debug_service_v1_open, central_debug_service_v1_close, debug_policy_observe_only_v1}
+
+describe "Retained local dump composition":
+    it "rejects decoder queries without inventing frames or opening nonexistent roots":
+        step("Reject unauthenticated offline result")
+        val session = match central_debug_service_v1_open("sha256:" + FIXTURE_EXECUTABLE, debug_policy_observe_only_v1()):
+            case Ok(value): value
+            case Err(reason): fail(reason)
+        var grant = fixture_operations_local_grant(session)
+        grant.root = "/deliberately-nonexistent/private-root"
+        val owner = LocalDumpOwnerV1(grant: grant, incident_authority: fixture_operations_incident_authority(),
+            grant_authority: fixture_operations_local_authority(grant))
+        var request = fixture_operations_debug_request()
+        request.manifest = grant.manifest
+        val result = query_offline_dump(request, LocalOfflineSummaryOwnerV1(owner: owner))
+        val closed = central_debug_service_v1_close(session)
+        expect(operations_debug_error(result)).to_equal("unsupported_offline_adapter")
+
+    it "produces actual retained metadata summary or reports TEST_BLOCKED":
+        step("Read bounded authorized dump slice")
+        val session = match central_debug_service_v1_open("sha256:" + FIXTURE_EXECUTABLE, debug_policy_observe_only_v1()):
+            case Ok(value): value
+            case Err(reason): fail(reason)
+        val grant = fixture_operations_local_grant(session)
+        val owner = LocalDumpOwnerV1(grant: grant, incident_authority: fixture_operations_incident_authority(),
+            grant_authority: fixture_operations_local_authority(grant))
+        var request = fixture_operations_debug_request()
+        request.manifest = grant.manifest
+        request.query = "summary"
+        request.maximum_bytes = 1024
+        val result = query_offline_dump(request, LocalOfflineSummaryOwnerV1(owner: owner))
+        val closed = central_debug_service_v1_close(session)
+        match result:
+            case Ok(value):
+                expect(value.adapter_id).to_equal("retained-local-metadata/1")
+                expect(value.summary).to_contain("bytes=148")
+                expect(value.dump_sha256).to_equal(OPERATIONS_LOCAL_FIXTURE_SHA256)
+            case Err(reason): fail("TEST_BLOCKED:retained-summary-fixture:" + reason)
+
+    it "denies scope before private clock/grant/debug/root lookup":
+        step("Deny dump discovery before owner lookup")
+        var grant = fixture_operations_local_grant(DebugSessionId(value: "never-opened"))
+        grant.root = "/deliberately-nonexistent/private-root"
+        val authority = FixtureLocalGrantAuthority(expected: grant, fail_lookup: true)
+        expect(operations_slice_error(load_local_dump_slice(grant, 0, 10,
+            FixtureOperationsIncidentAuthority(allowed: false), authority))).to_equal("unauthorized_dump_scope")
+
+    it "rejects closed debug sessions before nonexistent retained root":
+        step("Deny dump discovery before owner lookup")
+        val session = match central_debug_service_v1_open("sha256:" + FIXTURE_EXECUTABLE, debug_policy_observe_only_v1()):
+            case Ok(value): value
+            case Err(reason): fail(reason)
+        var grant = fixture_operations_local_grant(session)
+        grant.root = "/deliberately-nonexistent/private-root"
+        val closed = central_debug_service_v1_close(session)
+        expect(operations_slice_error(load_local_dump_slice(grant, 0, 10, fixture_operations_incident_authority(),
+            fixture_operations_local_authority(grant)))).to_equal("unauthorized_dump_scope")
+
+    it "rejects forged manifest, cross-scope, malformed leaf and expired grant":
+        step("Deny dump discovery before owner lookup")
+        val session = match central_debug_service_v1_open("sha256:" + FIXTURE_EXECUTABLE, debug_policy_observe_only_v1()):
+            case Ok(value): value
+            case Err(reason): fail(reason)
+        val other_session = match central_debug_service_v1_open("sha256:" + FIXTURE_INPUTS, debug_policy_observe_only_v1()):
+            case Ok(value): value
+            case Err(reason): fail(reason)
+        val original = fixture_operations_local_grant(session)
+        val authority = fixture_operations_local_authority(original)
+        val owner = LocalDumpOwnerV1(grant: original, incident_authority: fixture_operations_incident_authority(), grant_authority: authority)
+        expect(owner.authorize_dump(original.manifest.scope_id, original.manifest.incident_id, original.manifest.dump_id, "read")).to_equal(true)
+        var changed = original
+        changed.manifest.executable_sha256 = FIXTURE_INPUTS
+        expect(operations_slice_error(load_local_dump_slice(changed, 0, 10, fixture_operations_incident_authority(), authority))).to_equal("unauthorized_dump_scope")
+        changed = original
+        changed.manifest.scope_id = "other-scope"
+        expect(operations_slice_error(load_local_dump_slice(changed, 0, 10, fixture_operations_incident_authority(), authority))).to_equal("unauthorized_dump_scope")
+        changed = original
+        changed.single_leaf = "../private"
+        expect(operations_slice_error(load_local_dump_slice(changed, 0, 10, fixture_operations_incident_authority(),
+            fixture_operations_local_authority(changed)))).to_equal("unauthorized_dump_scope")
+        expect(operations_slice_error(load_local_dump_slice(original, 0, 10, fixture_operations_incident_authority(),
+            FixtureLocalGrantAuthority(expected: original, clock_ms: 200)))).to_equal("unauthorized_dump_scope")
+        changed = original
+        changed.manifest.source_revision = "ffffffffffffffffffffffffffffffffffffffff"
+        expect(operations_slice_error(load_local_dump_slice(changed, 0, 10, fixture_operations_incident_authority(), authority))).to_equal("unauthorized_dump_scope")
+        changed = original
+        changed.collector_sha256 = FIXTURE_INPUTS
+        expect(operations_slice_error(load_local_dump_slice(changed, 0, 10, fixture_operations_incident_authority(), authority))).to_equal("unauthorized_dump_scope")
+        changed = original
+        changed.collection_sha256 = FIXTURE_EVIDENCE
+        expect(operations_slice_error(load_local_dump_slice(changed, 0, 10, fixture_operations_incident_authority(), authority))).to_equal("unauthorized_dump_scope")
+        changed = original
+        changed.session_id = other_session
+        expect(operations_slice_error(load_local_dump_slice(changed, 0, 10, fixture_operations_incident_authority(), authority))).to_equal("unauthorized_dump_scope")
+        val other_closed = central_debug_service_v1_close(other_session)
+        val closed = central_debug_service_v1_close(session)
+
+    it "reads current benign fixture with actual retained owners or reports TEST_BLOCKED":
+        step("Read bounded authorized dump slice")
+        val session = match central_debug_service_v1_open("sha256:" + FIXTURE_EXECUTABLE, debug_policy_observe_only_v1()):
+            case Ok(value): value
+            case Err(reason): fail(reason)
+        val grant = fixture_operations_local_grant(session)
+        val result = load_local_dump_slice(grant, 0, 6, fixture_operations_incident_authority(), fixture_operations_local_authority(grant))
+        val closed = central_debug_service_v1_close(session)
+        match result:
+            case Ok(slice): expect(slice.bytes).to_equal([115, 99, 104, 101, 109, 97])
+            case Err(reason): fail("TEST_BLOCKED:retained-local-fixture:" + reason)
+
+    it "rejects stale actual bytes and quotas without unsafe path fallback":
+        step("Read bounded authorized dump slice")
+        val session = match central_debug_service_v1_open("sha256:" + FIXTURE_EXECUTABLE, debug_policy_observe_only_v1()):
+            case Ok(value): value
+            case Err(reason): fail(reason)
+        var grant = fixture_operations_local_grant(session)
+        grant.manifest.content_sha256 = FIXTURE_EVIDENCE
+        val authority = fixture_operations_local_authority(grant)
+        val quota = load_local_dump_slice(grant, 0, 1048577, fixture_operations_incident_authority(), authority)
+        val stale = load_local_dump_slice(grant, 0, 6, fixture_operations_incident_authority(), authority)
+        val closed = central_debug_service_v1_close(session)
+        expect(operations_slice_error(quota)).to_equal("dump_quota_exceeded")
+        match stale:
+            case Ok(slice): fail("stale digest accepted")
+            case Err(reason):
+                if reason != "dump_digest_mismatch": fail("TEST_BLOCKED:retained-stale-fixture:" + reason)
+                expect(reason).to_equal("dump_digest_mismatch")

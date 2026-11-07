@@ -1,0 +1,125 @@
+"""Lifecycle policy adapter over the concrete local Git artifact owner."""
+use lifecycle.contracts.*
+use lifecycle.state.{transition_lifecycle_run}
+use lifecycle.workflow.store.*
+use lifecycle.workflow.bundle.*
+use lifecycle.workflow.git_artifact.*
+use app.io.mod.{current_time_ms}
+
+pub struct GitWorkflowAdmissionV1:
+    artifact_owner: GitArtifactOwnerV1
+    initial_run: LifecycleRunV1
+    policy_requirements: [GateRequirementV1]
+
+# Host authenticates complete policy requirements and artifact owner admission;
+# it returns its checked lifecycle authority, never a request-supplied flag.
+pub trait GitWorkflowHostAuthorityV1:
+    fn admit(self, admission: GitWorkflowAdmissionV1) -> bool
+    fn authorize(self, context: WorkflowContextV1, run_id: text, operation: text) -> bool
+    fn lifecycle_authority(self) -> LifecycleAuthorityV1
+
+pub fn git_workflow_store(admission: GitWorkflowAdmissionV1,
+    authority: GitWorkflowHostAuthorityV1) -> Result<GitWorkflowStoreV1, text>:
+    if not authority.admit(admission): return Err("workflow_git_admission_denied")
+    val run = admission.initial_run
+    val artifact = admission.artifact_owner.admission
+    if not lifecycle_valid_run(run) or run.state != "proposed" or run.generation != 0 or
+        artifact.artifact_kind != "lifecycle_run" or artifact.artifact_key != run.run_id or
+        artifact.source_revision != run.source_revision or artifact.policy_sha256 != run.policy_sha256 or
+        admission.policy_requirements.len() > 704:
+        return Err("workflow_context_mismatch")
+    Ok(GitWorkflowStoreV1(admission: admission, authority: authority))
+
+pub class GitWorkflowStoreV1 with WorkflowStoreV1:
+    admission: GitWorkflowAdmissionV1
+    authority: GitWorkflowHostAuthorityV1
+
+    fn context(now_ms: i64) -> WorkflowContextV1:
+        val artifact = self.admission.artifact_owner.admission
+        WorkflowContextV1(authority_scope: artifact.authority_scope,
+            source_revision: artifact.source_revision, policy_sha256: artifact.policy_sha256, now_ms: now_ms)
+
+    fn requirements(target: text) -> [GateRequirementV1]:
+        [for requirement in self.admission.policy_requirements if requirement.target_state == target: requirement]
+
+    fn authorize(context: WorkflowContextV1, run_id: text, operation: text) -> bool:
+        self.authority.authorize(context, run_id, operation) and self.authority.admit(self.admission) and
+            run_id == self.admission.initial_run.run_id and context.authority_scope == self.admission.artifact_owner.admission.authority_scope and
+            context.source_revision == self.admission.initial_run.source_revision and context.policy_sha256 == self.admission.initial_run.policy_sha256
+
+    me checked_snapshot(run_id: text) -> Result<GitArtifactSnapshotV1, text>:
+        if not self.authorize(self.context(current_time_ms()), run_id, "read"): return Err("workflow_unauthorized")
+        val history = self.admission.artifact_owner.read_artifact_history("lifecycle_run", run_id, 128)?
+        var index = 0
+        for snapshot in history:
+            val bundle = decode_workflow_bundle(snapshot.canonical_sdn)?
+            if bundle.previous_oid != snapshot.receipt.previous_commit_oid or bundle.commit.next.run_id != run_id or
+                not workflow_context_matches(self.context(bundle.commit.context.now_ms), bundle.commit.next): return Err("workflow_context_mismatch")
+            if bundle.previous_oid == "":
+                if index != history.len() - 1 or not workflow_same_run(bundle.commit.next, self.admission.initial_run): return Err("workflow_context_mismatch")
+            else:
+                if index + 1 >= history.len(): return Err("workflow_git_history_mismatch")
+                val parent = history[index + 1]
+                val parent_bundle = decode_workflow_bundle(parent.canonical_sdn)?
+                if parent.receipt.commit_oid != bundle.previous_oid or not workflow_same_run(parent_bundle.commit.next, bundle.commit.previous): return Err("workflow_git_history_mismatch")
+                val checked = transition_lifecycle_run(bundle.commit.previous, bundle.commit.next.state,
+                    bundle.commit.previous.generation, self.requirements(bundle.commit.next.state),
+                    bundle.commit.receipts, bundle.commit.waivers, self.authority.lifecycle_authority(), bundle.commit.context.now_ms)?
+                if not workflow_same_run(checked, bundle.commit.next): return Err("workflow_store_conflict")
+            index = index + 1
+        Ok(history[0])
+
+    me load(run_id: text) -> Result<LifecycleRunV1, text>:
+        val snapshot = self.checked_snapshot(run_id)?
+        val bundle = decode_workflow_bundle(snapshot.canonical_sdn)?
+        Ok(bundle.commit.next)
+
+    me commit_atomic(commit: WorkflowCommitV1) -> Result<LifecycleRunV1, text>:
+        if not self.authorize(commit.context, commit.previous.run_id, "commit"): return Err("workflow_unauthorized")
+        if commit.authority_scope != commit.context.authority_scope: return Err("workflow_context_mismatch")
+        val snapshot = self.checked_snapshot(commit.previous.run_id)?
+        val current = decode_workflow_bundle(snapshot.canonical_sdn)?
+        if not workflow_same_run(current.commit.next, commit.previous): return Err("workflow_store_conflict")
+        val now = current_time_ms()
+        if now < commit.context.now_ms or now < 0: return Err("workflow_clock_invalid")
+        val context = self.context(now)
+        val next = transition_lifecycle_run(commit.previous, commit.next.state, commit.previous.generation,
+            self.requirements(commit.next.state), commit.receipts, commit.waivers,
+            self.authority.lifecycle_authority(), now)?
+        if not workflow_same_run(next, commit.next): return Err("workflow_store_conflict")
+        # Refuse expiry close to the bounded multi-command CAS sequence. The
+        # authenticated host process deadline+cleanup bounds cover each command.
+        val process = self.admission.artifact_owner.admission
+        val guard_ms = 16 * ((process.request.wall_budget_ns + process.request.cleanup_budget_ns +
+            2 * process.poll_wait_ns) / 1000000 + 1)
+        var remaining_ms = 9223372036854775807
+        for receipt in commit.receipts:
+            val remaining = receipt.expires_at_ms - now
+            if remaining < remaining_ms: remaining_ms = remaining
+        for waiver in commit.waivers:
+            val remaining = waiver.expires_at_ms - now
+            if remaining < remaining_ms: remaining_ms = remaining
+        if remaining_ms <= guard_ms: return Err("workflow_evidence_deadline_too_close")
+        val bound = WorkflowCommitV1(context: context, previous: commit.previous, next: next,
+            receipts: commit.receipts, waivers: commit.waivers, authority_scope: context.authority_scope)
+        val payload = encode_workflow_bundle(bound, snapshot.receipt.commit_oid)?
+        val receipt = self.admission.artifact_owner.commit_artifact(GitArtifactWriteV1(artifact_kind: "lifecycle_run",
+            artifact_key: next.run_id, canonical_sdn: payload, source_revision: next.source_revision,
+            policy_sha256: next.policy_sha256, authority_scope: context.authority_scope,
+            expected_commit_oid: snapshot.receipt.commit_oid))?
+        val published_at = current_time_ms()
+        if published_at < now or (remaining_ms != 9223372036854775807 and published_at - now >= remaining_ms):
+            return Err("workflow_store_uncertain:" + receipt.ref_name + ":" + receipt.commit_oid + ":" + receipt.previous_commit_oid)
+        Ok(next)
+
+pub fn initialize_git_workflow_run(mut store: GitWorkflowStoreV1) -> Result<LifecycleRunV1, text>:
+    val run = store.admission.initial_run
+    val context = store.context(current_time_ms())
+    if not store.authorize(context, run.run_id, "initialize"): return Err("workflow_unauthorized")
+    val commit = WorkflowCommitV1(context: context, previous: run, next: run, receipts: [], waivers: [],
+        authority_scope: context.authority_scope)
+    val payload = encode_workflow_bundle(commit, "")?
+    store.admission.artifact_owner.commit_artifact(GitArtifactWriteV1(artifact_kind: "lifecycle_run", artifact_key: run.run_id,
+        canonical_sdn: payload, source_revision: run.source_revision, policy_sha256: run.policy_sha256,
+        authority_scope: context.authority_scope, expected_commit_oid: ""))?
+    Ok(run)

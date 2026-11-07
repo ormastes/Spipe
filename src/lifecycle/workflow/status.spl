@@ -1,0 +1,54 @@
+"""Read-only authorized status and policy explanations; never grants admission."""
+use lifecycle.contracts.*
+use lifecycle.gate.{evaluate_lifecycle_gate}
+use lifecycle.workflow.store.*
+
+pub struct WorkflowStatusV1:
+    run: LifecycleRunV1
+    next_state: text
+    decisions: [GateDecisionV1]
+
+pub fn workflow_next(state: text) -> Result<text, text>:
+    val states = ["proposed", "investigating", "defined", "designed", "test_ready",
+        "implementing", "verifying", "releasable", "released", "observing", "closed"]
+    val index = lifecycle_state_index(state)
+    if index < 0:
+        if lifecycle_exceptional_state(state): return Err("workflow_recovery_policy_required")
+        return Err("workflow_invalid_state")
+    if state == "closed": return Err("workflow_terminal")
+    Ok(states[index + 1])
+
+pub fn workflow_status(context: WorkflowContextV1, run_id: text,
+    mut store: WorkflowStoreV1) -> Result<WorkflowStatusV1, text>:
+    if not store.authorize(context, run_id, "status"): return Err("workflow_unauthorized")
+    val run = store.load(run_id)?
+    if run.run_id != run_id or not workflow_context_matches(context, run): return Err("workflow_context_mismatch")
+    # Empty decisions mean unevaluated: status has no receipt/policy discovery
+    # port. Call explain with authorized exact-bound policy and receipt values.
+    var next_state = ""
+    match workflow_next(run.state):
+        case Ok(next): next_state = next
+        case Err(reason): next_state = reason
+    Ok(WorkflowStatusV1(run: run, next_state: next_state, decisions: []))
+
+pub fn workflow_explain(run: LifecycleRunV1, requirements: [GateRequirementV1],
+    receipts: [GateEvidenceV1], waivers: [GateWaiverV1], authority: LifecycleAuthorityV1,
+    now_ms: i64) -> Result<[GateDecisionV1], text>:
+    if not lifecycle_valid_run(run) or now_ms < 0: return Err("invalid_run_or_clock")
+    if requirements.len() > 64 or receipts.len() > 64 or waivers.len() > 64: return Err("gate_input_quota_exceeded")
+    val target = workflow_next(run.state)?
+    if not authority.authorize_transition(run, target, requirements): return Err("unauthorized_transition_policy")
+    var decisions: [GateDecisionV1] = []
+    var seen: [text] = []
+    for requirement in requirements:
+        if requirement.target_state != target: return Err("gate_target_mismatch")
+        if seen.contains(requirement.gate_id): return Err("duplicate_gate_requirement")
+        seen.push(requirement.gate_id)
+        val selected_receipts = [for receipt in receipts if receipt.gate_id == requirement.gate_id: receipt]
+        val selected_waivers = [for waiver in waivers if waiver.gate_id == requirement.gate_id: waiver]
+        decisions.push(evaluate_lifecycle_gate(run, requirement, selected_receipts, selected_waivers, authority, now_ms))
+    for receipt in receipts:
+        if not seen.contains(receipt.gate_id): return Err("orphan_gate_receipt")
+    for waiver in waivers:
+        if not seen.contains(waiver.gate_id): return Err("orphan_gate_waiver")
+    Ok(decisions)

@@ -1,0 +1,63 @@
+# @req REQ-007 REQ-008
+# @cover src/lifecycle/learning/benchmark.spl
+use std.spec.*
+use lifecycle.learning.benchmark.*
+use .lifecycle_learning_fixtures.*
+
+describe "Frozen incident cohorts":
+    it "accepts disjoint family repository and time partitions":
+        step("Freeze disjoint incident cohorts")
+        val freeze = fixture_learning_freeze()
+        expect(learning_validate_partition(freeze.cases, freeze).outcome).to_equal("PASS")
+
+    it "rejects root-cause and repository leakage":
+        var freeze = fixture_learning_freeze()
+        freeze.cases[2].root_cause_family = freeze.cases[0].root_cause_family
+        expect(learning_validate_partition(freeze.cases, freeze).reason).to_equal("partition_leakage")
+        freeze = fixture_learning_freeze()
+        freeze.cases[2].repository_uid = freeze.cases[0].repository_uid
+        expect(learning_validate_partition(freeze.cases, freeze).reason).to_equal("partition_leakage")
+
+    it "rejects mutated frozen identity and future observations":
+        val freeze = fixture_learning_freeze()
+        var changed = freeze.cases
+        changed[2].symptom_sha256 = ""
+        expect(learning_validate_partition(changed, freeze).outcome).to_equal("FAIL")
+        var future = fixture_learning_freeze()
+        future.cases[0].observed_at_ms = 11
+        expect(learning_validate_partition(future.cases, future).reason).to_equal("future_training_case")
+
+    it "denies owner discovery before authorization":
+        val result = learning_blind_case(fixture_learning_scope(), "held:c", fixture_learning_freeze(), FixtureLearningOwnerV1(allowed: false))
+        expect(result).to_be_nil()
+
+    it "rejects relabeled content duplicate IDs and absent clearance":
+        var freeze = fixture_learning_freeze()
+        freeze.cases[2].symptom_sha256 = freeze.cases[0].symptom_sha256
+        expect(learning_validate_partition(freeze.cases, freeze).reason).to_equal("content_leakage")
+        freeze = fixture_learning_freeze()
+        freeze.cases[2].uid = freeze.cases[0].uid
+        expect(learning_validate_partition(freeze.cases, freeze).reason).to_equal("duplicate_case")
+        freeze = fixture_learning_freeze()
+        freeze.cases[2].clearance_sha256 = ""
+        expect(learning_validate_partition(freeze.cases, freeze).reason).to_equal("missing_case_evidence")
+
+    it "requires checked corpus isolation and returns a symptom-only projection":
+        step("Retrieve a blinded incident")
+        expect(learning_blind_case(fixture_learning_scope(), "held:c", fixture_learning_freeze(), FixtureLearningOwnerV1(freeze_verified: false))).to_be_nil()
+        val result = learning_blind_case(fixture_learning_scope(), "held:c", fixture_learning_freeze(), fixture_learning_owner())
+        var found = false
+        if val blinded = result:
+            found = true
+            expect(blinded.uid).to_equal("held:c")
+            expect(blinded.symptom_sha256).to_equal(fixture_learning_freeze().cases[2].symptom_sha256)
+        expect(found).to_equal(true)
+        expect(learning_blind_case(fixture_learning_scope(), "train:a", fixture_learning_freeze(), fixture_learning_owner())).to_be_nil()
+
+    it "rejects held-out answers present as training observations and the reverse":
+        var freeze = fixture_learning_freeze()
+        freeze.cases[0].symptom_sha256 = freeze.cases[2].answer_sha256
+        expect(learning_validate_partition(freeze.cases, freeze).reason).to_equal("content_leakage")
+        freeze = fixture_learning_freeze()
+        freeze.cases[0].answer_sha256 = freeze.cases[2].symptom_sha256
+        expect(learning_validate_partition(freeze.cases, freeze).reason).to_equal("content_leakage")

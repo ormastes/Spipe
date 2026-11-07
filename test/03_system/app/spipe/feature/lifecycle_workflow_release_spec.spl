@@ -1,0 +1,74 @@
+# @req REQ-001 REQ-003 REQ-006 REQ-008
+# @cover src/lifecycle/workflow/release_trace.spl
+use std.spec.*
+use lifecycle.workflow.release_trace.*
+use std.common.traceability.graph_types_v1.*
+use .lifecycle_fixtures.*
+use .lifecycle_workflow_release_fixtures.*
+
+fn release_error(result: Result<bool, text>) -> text:
+    match result:
+        case Ok(valid): "unexpected_success"
+        case Err(reason): reason
+
+describe "Authenticated build and release trace companion":
+    it "checks the complete requirement acceptance implementation evidence release chain":
+        step("query checked trace in both directions")
+        match check_workflow_release_link(workflow_fixture_release_graph(), workflow_fixture_release_link(), WorkflowFixtureReleaseAuthorityV1()):
+            case Ok(valid): expect(valid).to_equal(true)
+            case Err(reason): fail(reason)
+
+    it "denies private scope before malformed graph validation":
+        step("authorize workflow access")
+        var graph = workflow_fixture_release_graph()
+        graph.snapshot.id = ""
+        val result = check_workflow_release_link(graph, workflow_fixture_release_link(), WorkflowFixtureReleaseAuthorityV1(allowed: false))
+        expect(release_error(result)).to_equal("workflow_unauthorized")
+
+    it "rejects wrong release revision and forged release digest":
+        step("reject stale or replayed receipt")
+        var link = workflow_fixture_release_link()
+        link.release_revision = "ffffffffffffffffffffffffffffffffffffffff"
+        expect(release_error(check_workflow_release_link(workflow_fixture_release_graph(), link, WorkflowFixtureReleaseAuthorityV1()))).to_equal("workflow_release_revision")
+        link = workflow_fixture_release_link()
+        link.release_sha256 = FIXTURE_DIGEST
+        expect(release_error(check_workflow_release_link(workflow_fixture_release_graph(), link, WorkflowFixtureReleaseAuthorityV1()))).to_equal("trace_unchecked")
+
+    it "rejects unrelated evidence and an absent graph link":
+        step("query checked trace in both directions")
+        var graph = workflow_fixture_release_graph()
+        graph.nodes.push(TraceGraphNodeV1(id: "unrelated-evidence", kind: "evidence_artifact", title: "Other evidence"))
+        var link = workflow_fixture_release_link()
+        link.evidence_uid = "unrelated-evidence"
+        expect(release_error(check_workflow_release_link(graph, link, WorkflowFixtureReleaseAuthorityV1()))).to_equal("workflow_release_missing_edge")
+        graph = workflow_fixture_release_graph()
+        graph.edges = [for edge in graph.edges if edge.relation != "targets": edge]
+        graph.edge_origins = [for origin in graph.edge_origins if origin.edge_id != "edge-test-symbol": origin]
+        expect(release_error(check_workflow_release_link(graph, workflow_fixture_release_link(), WorkflowFixtureReleaseAuthorityV1()))).to_equal("workflow_release_missing_edge")
+
+    it "preserves the same complete link forward from symbol and backward from release":
+        step("query checked trace in both directions")
+        var query = WorkflowReleaseTraceQueryV1(authority_scope: "fixture-scope", run_id: "run-fixture",
+            source_revision: FIXTURE_SOURCE, policy_sha256: FIXTURE_DIGEST, entity_kind: "symbol", identity: "symbol-a",
+            direction: "forward", max_results: 2, max_work: 10000)
+        val graph = workflow_fixture_release_graph()
+        val links = [workflow_fixture_release_link()]
+        match query_workflow_release_trace(graph, links, query, WorkflowFixtureReleaseAuthorityV1()):
+            case Ok(found):
+                expect(found.len()).to_equal(1)
+                expect(found[0].release_sha256).to_equal(FIXTURE_INPUTS)
+            case Err(reason): fail(reason)
+        query.entity_kind = "release"
+        query.identity = FIXTURE_INPUTS
+        query.direction = "reverse"
+        match query_workflow_release_trace(graph, links, query, WorkflowFixtureReleaseAuthorityV1()):
+            case Ok(found):
+                expect(found.len()).to_equal(1)
+                expect(found[0].uid).to_equal("release-link-fixture")
+                expect(found[0].requirement_uid).to_equal("requirement-fixture")
+                expect(found[0].symbol_uid).to_equal("symbol-a")
+            case Err(reason): fail(reason)
+        query.max_work = 1
+        match query_workflow_release_trace(graph, links, query, WorkflowFixtureReleaseAuthorityV1()):
+            case Ok(found): fail("unexpected quota success")
+            case Err(reason): expect(reason).to_equal("trace_quota_exceeded")

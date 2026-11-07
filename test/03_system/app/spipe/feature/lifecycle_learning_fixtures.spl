@@ -1,0 +1,172 @@
+"""Synthetic contract fixtures only; no real training/evaluation evidence."""
+use std.spec.{fail}
+use lifecycle.learning.contracts.*
+use .lifecycle_fixtures.{FIXTURE_SOURCE, FIXTURE_DIGEST, FIXTURE_EVIDENCE}
+
+pub fn fixture_learning_scope() -> LearningScopeV1:
+    LearningScopeV1(scope_uid: "project:fixture", source_revision: FIXTURE_SOURCE, policy_sha256: FIXTURE_DIGEST)
+
+pub fn fixture_learning_claim() -> KnowledgeClaimV1:
+    KnowledgeClaimV1(uid: "claim:a", scope: fixture_learning_scope(), content_sha256: FIXTURE_DIGEST,
+        origin_uid: "raw:a", origin_revision: FIXTURE_SOURCE, origin_sha256: FIXTURE_EVIDENCE,
+        status: "active", canonical_uid: "")
+
+pub fn fixture_learning_review() -> ClaimReviewV1:
+    ClaimReviewV1(claim_uid: "claim:a", expected_content_sha256: FIXTURE_DIGEST, decision: "archive",
+        replacement_uid: "", reviewer: "fixture-reviewer", evidence_sha256: FIXTURE_EVIDENCE)
+
+pub fn fixture_learning_case() -> BenchmarkCaseV1:
+    BenchmarkCaseV1(uid: "train:a", root_cause_family: "family:a", repository_uid: "repo:a", observed_at_ms: 10,
+        split: "train", symptom_sha256: FIXTURE_DIGEST, answer_sha256: FIXTURE_EVIDENCE, clearance_sha256: FIXTURE_EVIDENCE)
+
+pub fn fixture_learning_freeze() -> BenchmarkFreezeV1:
+    val train = fixture_learning_case()
+    var dev = fixture_learning_case()
+    dev.uid = "dev:b"
+    dev.root_cause_family = "family:b"
+    dev.repository_uid = "repo:b"
+    dev.observed_at_ms = 20
+    dev.split = "dev"
+    dev.symptom_sha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    dev.answer_sha256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    var held = fixture_learning_case()
+    held.uid = "held:c"
+    held.root_cause_family = "family:c"
+    held.repository_uid = "repo:c"
+    held.observed_at_ms = 30
+    held.split = "held_out"
+    held.symptom_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    held.answer_sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    BenchmarkFreezeV1(uid: "freeze:a", manifest_sha256: FIXTURE_DIGEST, corpus_sha256: FIXTURE_EVIDENCE,
+        train_end_ms: 10, dev_end_ms: 20, held_out_end_ms: 30, cases: [train, dev, held])
+
+pub fn fixture_learning_policy() -> ModelLadderPolicyV1:
+    ModelLadderPolicyV1(attempt_uid: "attempt-a", cohort_sha256: FIXTURE_DIGEST, repeats: 2, solve_k: 3,
+        max_tokens: 1000, max_cost_micros: 1000, max_elapsed_ms: 1000, max_peak_bytes: 1000, minimum_delta_ppm: 1)
+
+pub fn fixture_learning_trial() -> ModelTrialV1:
+    ModelTrialV1(uid: "baseline:0", attempt_uid: "attempt-a", cohort_sha256: FIXTURE_DIGEST, case_uid: "held:c",
+        seed: 0, repeat: 0, arm: "baseline", model: "fixture-model", revision: "fixture-revision", quantization: "f16",
+        context_tokens: 1024, prompt_sha256: FIXTURE_DIGEST, wiki_sha256: FIXTURE_DIGEST,
+        skill_sha256: FIXTURE_DIGEST, tool_sha256: FIXTURE_DIGEST, solved_at: 1, correct_cause: true,
+        tests_passed: true, regressions: 0, tool_calls: 2, safety_failures: 0, tokens: 10, cost_micros: 1,
+        elapsed_ms: 5, peak_bytes: 100, receipt_sha256: FIXTURE_EVIDENCE)
+
+pub fn fixture_learning_trials() -> [ModelTrialV1]:
+    val b0 = fixture_learning_trial()
+    var b1 = fixture_learning_trial()
+    b1.uid = "baseline:1"
+    b1.seed = 1
+    b1.repeat = 1
+    var c0 = fixture_learning_trial()
+    c0.uid = "candidate:0"
+    c0.arm = "candidate"
+    var c1 = c0
+    c1.uid = "candidate:1"
+    c1.seed = 1
+    c1.repeat = 1
+    [b0, b1, c0, c1]
+
+pub class FixtureLearningOwnerV1 with LearningOwnerV1:
+    allowed: bool = true
+    reviews_verified: bool = true
+    commit_allowed: bool = true
+    target_changed_at_commit: bool = false
+    freeze_verified: bool = true
+    trials_verified: bool = true
+    promotion_verified: bool = false
+    record_authorized: bool = true
+    record_verified: bool = false
+    attempt_verified: bool = true
+    records: [KnowledgeClaimV1] = []
+
+    fn authorize(scope: LearningScopeV1, operation: text) -> bool:
+        self.allowed and (operation != "learning.record_attempt" or self.record_authorized) and scope.scope_uid == "project:fixture" and scope.source_revision == FIXTURE_SOURCE and scope.policy_sha256 == FIXTURE_DIGEST
+
+    fn claims(scope: LearningScopeV1) -> [KnowledgeClaimV1]:
+        assert(self.allowed)
+        self.records
+
+    fn verify_review(scope: LearningScopeV1, claim: KnowledgeClaimV1, review: ClaimReviewV1) -> bool:
+        assert(self.allowed)
+        self.reviews_verified and review.evidence_sha256 == FIXTURE_EVIDENCE
+
+    fn commit_review(scope: LearningScopeV1, claim: KnowledgeClaimV1, review: ClaimReviewV1, expected_target: KnowledgeClaimV1?) -> bool:
+        assert(self.allowed)
+        # Fixture checks full provenance reaches the CAS owner unchanged.
+        assert(claim.origin_uid == "raw:a")
+        assert(claim.origin_revision == FIXTURE_SOURCE)
+        assert(claim.origin_sha256 == FIXTURE_EVIDENCE)
+        if review.decision == "alias":
+            if val target = expected_target:
+                assert(target.uid == review.replacement_uid)
+                assert(target.status == "active")
+                assert(target.canonical_uid == "")
+                assert(target.scope.scope_uid == scope.scope_uid)
+                assert(target.content_sha256 == FIXTURE_DIGEST)
+                assert(target.origin_uid == "raw:a")
+                # Models a concurrent target archive/alias AFTER discovery.
+                # Atomic compare of complete source+target must reject it.
+                if self.target_changed_at_commit: return false
+            else:
+                fail("alias commit omitted checked target")
+                return false
+        else:
+            if val unexpected = expected_target:
+                fail("nonalias commit supplied unexpected target")
+                return false
+        self.commit_allowed
+
+    fn verify_freeze(scope: LearningScopeV1, freeze: BenchmarkFreezeV1) -> bool:
+        assert(self.allowed)
+        self.freeze_verified and freeze.uid == "freeze:a"
+
+    fn benchmark_case(scope: LearningScopeV1, case_uid: text, freeze: BenchmarkFreezeV1) -> BenchmarkCaseV1?:
+        assert(self.allowed)
+        for item in freeze.cases:
+            if item.uid == case_uid: return item
+        nil
+
+    fn verify_trial(trial: ModelTrialV1) -> bool:
+        assert(self.allowed)
+        self.trials_verified and trial.receipt_sha256 == FIXTURE_EVIDENCE
+
+    fn verify_promotion(scope: LearningScopeV1, summary: ModelLadderSummaryV1) -> bool:
+        assert(self.allowed)
+        assert(summary.policy.attempt_uid == "attempt-a")
+        assert(summary.distinct_cases == 8)
+        assert(summary.pairs == 16)
+        assert(summary.delta_ppm == 1000000)
+        self.promotion_verified
+
+    fn record_attempt(scope: LearningScopeV1, summary: ModelLadderSummaryV1) -> bool:
+        # In-memory contract assertion only; never opens host registry.
+        assert(self.allowed)
+        assert(self.record_authorized)
+        assert(summary.reason == "observations_not_authenticated")
+        assert(summary.tokens == 320)
+        assert(summary.policy.attempt_uid == "attempt-a")
+        self.record_verified
+
+    fn verify_attempt_binding(scope: LearningScopeV1, attempt_uid: text, source_path: text, source_sha256: text) -> bool:
+        assert(self.allowed)
+        self.attempt_verified and attempt_uid == "attempt-a" and source_path == ".spipe/llm-finetune-process/attempts/attempt-a.sdn" and source_sha256 == FIXTURE_EVIDENCE
+
+pub fn fixture_learning_owner() -> FixtureLearningOwnerV1:
+    FixtureLearningOwnerV1(records: [fixture_learning_claim()])
+
+pub fn fixture_learning_promotion_trials() -> [ModelTrialV1]:
+    var trials: [ModelTrialV1] = []
+    var index = 0
+    while index < 8:
+        for original in fixture_learning_trials():
+            var trial = original
+            trial.uid = "{index}:{original.uid}"
+            trial.case_uid = "held:{index}"
+            if trial.arm == "baseline":
+                trial.solved_at = 0
+                trial.correct_cause = false
+                trial.tests_passed = false
+            trials.push(trial)
+        index = index + 1
+    trials

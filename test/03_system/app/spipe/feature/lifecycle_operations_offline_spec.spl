@@ -1,0 +1,48 @@
+# @req REQ-004 REQ-006 REQ-008
+# @cover src/lifecycle/operations/offline.spl
+use std.spec.*
+use lifecycle.operations.offline.*
+use .lifecycle_operations_fixtures.*
+
+describe "Authenticated local offline debugging":
+    it "rejects revocation inside query or verification before result release":
+        step("Reject unauthenticated offline result")
+        for phase in ["query", "result"]:
+            reset_operations_revocation()
+            expect(operations_debug_error(query_offline_dump(fixture_operations_debug_request(),
+                RevokingOperationsDebugPort(revoke_at: phase)))).to_equal("unauthorized_dump_scope")
+        reset_operations_revocation()
+
+    it "denies before debugger or cache lookup":
+        step("Reject unauthenticated offline result")
+        expect(operations_debug_error(query_offline_dump(fixture_operations_debug_request(),
+            FixtureOperationsDebugPort(allowed: false, fail_provider: true)))).to_equal("unauthorized_dump_scope")
+
+    it "returns a verified result bound to exact source and dump":
+        step("Read bounded authorized dump slice")
+        val request = fixture_operations_debug_request()
+        match query_offline_dump(request, fixture_operations_debug_port()):
+            case Ok(result):
+                expect(result.source_revision).to_equal(request.manifest.source_revision)
+                expect(result.dump_sha256).to_equal(request.manifest.content_sha256)
+            case Err(reason): fail(reason)
+
+    it "rejects unauthenticated and mismatched results":
+        step("Reject unauthenticated offline result")
+        expect(operations_debug_error(query_offline_dump(fixture_operations_debug_request(),
+            FixtureOperationsDebugPort(verified: false)))).to_equal("offline_result_mismatch")
+        expect(operations_debug_error(query_offline_dump(fixture_operations_debug_request(),
+            FixtureOperationsDebugPort(bad_hash: true)))).to_equal("offline_result_mismatch")
+
+    it "rejects commands, mixed scopes and excessive output before provider":
+        step("Reject unauthenticated offline result")
+        val port = FixtureOperationsDebugPort(fail_provider: true)
+        var request = fixture_operations_debug_request()
+        request.query = "attach 123; dump memory"
+        expect(operations_debug_error(query_offline_dump(request, port))).to_equal("unsupported_offline_adapter")
+        request = fixture_operations_debug_request()
+        request.manifest.incident_id = "other-incident"
+        expect(operations_debug_error(query_offline_dump(request, port))).to_equal("dump_scope_mismatch")
+        request = fixture_operations_debug_request()
+        request.maximum_bytes = 1048577
+        expect(operations_debug_error(query_offline_dump(request, port))).to_equal("dump_quota_exceeded")

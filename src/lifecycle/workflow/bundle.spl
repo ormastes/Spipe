@@ -1,0 +1,82 @@
+"""Canonical bounded SDN workflow transactions; no receipt fields are elided."""
+use lifecycle.contracts.*
+use lifecycle.state.{legal_lifecycle_transition}
+use lifecycle.workflow.store.*
+use lifecycle.workflow.bundle_values.*
+use std.common.sdn.value.{SdnValue}
+use std.common.sdn.strict_v1.{sdn_parse_strict_v1}
+use std.common.sdn.strict_types_v1.{SdnStrictLimitsV1}
+use std.common.sdn.encode.{sdn_encode_canonical}
+
+pub struct WorkflowGitBundleV1:
+    commit: WorkflowCommitV1
+    previous_oid: text
+
+pub fn workflow_git_oid(value: text) -> bool:
+    lifecycle_hex(value, 40) or lifecycle_hex(value, 64)
+
+pub fn workflow_canonical_sdn(source: text) -> Result<SdnValue, text>:
+    val limits = SdnStrictLimitsV1(max_source_bytes: 1048576, max_depth: 12,
+        max_nodes: 32768, max_rows: 2048, max_cells: 32768, max_columns: 64)
+    match sdn_parse_strict_v1(source, limits):
+        case Ok(document):
+            if sdn_encode_canonical(document.value) != source: return Err("workflow_noncanonical_sdn")
+            Ok(document.value)
+        case Err(issue): Err("workflow_invalid_sdn:" + issue.code)
+
+pub fn encode_workflow_bundle(commit: WorkflowCommitV1, previous_oid: text) -> Result<text, text>:
+    if previous_oid != "" and not workflow_git_oid(previous_oid): return Err("workflow_bundle_oid")
+    if commit.receipts.len() > 64 or commit.waivers.len() > 64: return Err("gate_input_quota_exceeded")
+    if commit.authority_scope != commit.context.authority_scope or not workflow_context_matches(commit.context, commit.previous):
+        return Err("workflow_context_mismatch")
+    if not lifecycle_valid_run(commit.next): return Err("workflow_bundle_run")
+    var fields: Dict<text, SdnValue> = {}
+    fields["schema"] = SdnValue.String("spipe-workflow-bundle/1")
+    fields["authority_scope"] = SdnValue.String(commit.authority_scope)
+    fields["previous_oid"] = SdnValue.String(previous_oid)
+    fields["context"] = workflow_context_value(commit.context)
+    fields["previous"] = workflow_run_value(commit.previous)
+    fields["next"] = workflow_run_value(commit.next)
+    fields["receipts"] = SdnValue.Array([for receipt in commit.receipts: workflow_evidence_value(receipt)])
+    fields["waivers"] = SdnValue.Array([for waiver in commit.waivers: workflow_waiver_value(waiver)])
+    val encoded = sdn_encode_canonical(SdnValue.Dict(fields))
+    if encoded.len() > 1048576: return Err("workflow_bundle_quota")
+    # Shared typed decode validates all serialized values, including future
+    # changes to record constructors. The strict parser owns all grammar.
+    decode_workflow_bundle(encoded)?
+    Ok(encoded)
+
+pub fn decode_workflow_bundle(source: text) -> Result<WorkflowGitBundleV1, text>:
+    val value = workflow_canonical_sdn(source)?
+    val fields = workflow_sdn_object(value, ["schema", "authority_scope", "previous_oid",
+        "context", "previous", "next", "receipts", "waivers"])?
+    if workflow_sdn_text(fields["schema"])? != "spipe-workflow-bundle/1": return Err("workflow_bundle_schema")
+    val scope = workflow_sdn_text(fields["authority_scope"])?
+    val previous_oid = workflow_sdn_text(fields["previous_oid"])?
+    if previous_oid != "" and not workflow_git_oid(previous_oid): return Err("workflow_bundle_oid")
+    val context = workflow_context_decode(fields["context"])?
+    val previous = workflow_run_decode(fields["previous"])?
+    val next = workflow_run_decode(fields["next"])?
+    if scope != context.authority_scope or not workflow_context_matches(context, previous): return Err("workflow_context_mismatch")
+    if previous.run_id != next.run_id or previous.source_revision != next.source_revision or previous.policy_sha256 != next.policy_sha256:
+        return Err("workflow_context_mismatch")
+    if previous_oid == "":
+        if not workflow_same_run(previous, next) or next.generation != 0 or next.state != "proposed": return Err("workflow_bundle_genesis")
+    else:
+        if previous.generation == 9223372036854775807 or next.generation != previous.generation + 1 or not legal_lifecycle_transition(previous.state, next.state):
+            return Err("workflow_bundle_transition")
+    var receipts: [GateEvidenceV1] = []
+    match fields["receipts"]:
+        case Array(items):
+            if items.len() > 64: return Err("gate_input_quota_exceeded")
+            for item in items: receipts.push(workflow_evidence_decode(item)?)
+        case _: return Err("workflow_bundle_type")
+    var waivers: [GateWaiverV1] = []
+    match fields["waivers"]:
+        case Array(items):
+            if items.len() > 64: return Err("gate_input_quota_exceeded")
+            for item in items: waivers.push(workflow_waiver_decode(item)?)
+        case _: return Err("workflow_bundle_type")
+    if previous_oid == "" and (receipts.len() != 0 or waivers.len() != 0): return Err("workflow_bundle_genesis")
+    Ok(WorkflowGitBundleV1(commit: WorkflowCommitV1(context: context, previous: previous, next: next,
+        receipts: receipts, waivers: waivers, authority_scope: scope), previous_oid: previous_oid))

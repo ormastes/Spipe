@@ -1,0 +1,106 @@
+"""Checked graph snapshot queries; host codec and invalidation planner own semantics."""
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_revision, lifecycle_hex}
+use std.common.traceability.graph_types_v1.*
+use std.common.traceability.graph_schema_v1.{trace_graph_validate_v1}
+use std.common.traceability.incremental.{TraceDependency, TraceDependencyKind,
+    TraceInvalidationInput, TraceInvalidation, plan_trace_invalidation}
+
+pub struct WorkflowTraceQueryV1:
+    authority_scope: text
+    source_revision: text
+    policy_sha256: text
+    node_uid: text
+    relation: text
+    direction: text
+    max_results: i64
+    max_work: i64
+
+pub trait WorkflowTraceAuthorityV1:
+    fn authorize(self, query: WorkflowTraceQueryV1) -> bool
+    fn authenticate_graph(self, graph: TraceGraphV1, query: WorkflowTraceQueryV1) -> bool
+    fn authenticate_edge(self, graph: TraceGraphV1, edge: TraceGraphEdgeV1, query: WorkflowTraceQueryV1) -> bool
+
+fn workflow_trace_validate(graph: TraceGraphV1, max_work: i64) -> Result<bool, text>:
+    if max_work < 1 or graph.nodes.len() > max_work or graph.edges.len() > max_work:
+        return Err("trace_quota_exceeded")
+    var limits = trace_graph_codec_limits_v1()
+    if max_work < limits.max_records: limits.max_records = max_work
+    match trace_graph_validate_v1(graph, limits):
+        case Ok(valid):
+            if not valid: return Err("trace_invalid_graph")
+        case Err(issue): return Err("trace_invalid_graph:" + issue.code)
+    if not graph.snapshot.complete or not graph.manifest.complete: return Err("trace_incomplete_graph")
+    Ok(true)
+
+pub fn query_workflow_trace(graph: TraceGraphV1, query: WorkflowTraceQueryV1,
+    authority: WorkflowTraceAuthorityV1) -> Result<[TraceGraphEdgeV1], text>:
+    # Even validation is graph access: scope check must precede it.
+    if not authority.authorize(query): return Err("workflow_unauthorized")
+    if not lifecycle_has_text(query.authority_scope) or not lifecycle_revision(query.source_revision) or not lifecycle_hex(query.policy_sha256, 64):
+        return Err("workflow_context_mismatch")
+    if query.max_results < 1 or query.max_work < 1: return Err("trace_quota_exceeded")
+    if query.direction != "forward" and query.direction != "reverse": return Err("trace_invalid_direction")
+    val relations = ["specifies", "decomposes_to", "accepted_by", "verified_by", "targets", "implemented_by",
+        "motivated_by", "described_by", "belongs_to", "generated_from", "observed_in", "produced", "depends_on", "aliases", "supersedes"]
+    if not relations.contains(query.relation): return Err("trace_invalid_relation")
+    workflow_trace_validate(graph, query.max_work)?
+    if not authority.authenticate_graph(graph, query): return Err("trace_unchecked")
+    var found = false
+    for node in graph.nodes:
+        if node.id == query.node_uid: found = true
+    if not found: return Err("trace_missing_uid")
+    var results: [TraceGraphEdgeV1] = []
+    for edge in graph.edges:
+        val matches = (query.direction == "forward" and edge.from_id == query.node_uid) or (query.direction == "reverse" and edge.to_id == query.node_uid)
+        if matches and edge.relation == query.relation:
+            if not authority.authenticate_edge(graph, edge, query): return Err("trace_unchecked")
+            if results.len() >= query.max_results: return Err("trace_quota_exceeded")
+            results.push(edge)
+    Ok(results)
+
+pub fn invalidate_workflow_trace(graph: TraceGraphV1, changed_uids: [text],
+    max_work: i64) -> Result<[text], text>:
+    # Explicit depends_on snapshot closure ONLY; not evidence reuse admission.
+    # Production uses plan_workflow_invalidation with owner completeness facts.
+    # Bound the host planner's linear membership probes and fixed-point passes
+    # conservatively before invoking it. Division avoids overflow on hostile caps.
+    val nodes = graph.nodes.len() + 1
+    val edges = graph.edges.len() + 1
+    if max_work < 1 or nodes > max_work / nodes: return Err("trace_quota_exceeded")
+    val squared = nodes * nodes
+    if edges > max_work / squared: return Err("trace_quota_exceeded")
+    if changed_uids.len() > graph.nodes.len(): return Err("trace_quota_exceeded")
+    workflow_trace_validate(graph, max_work)?
+    var known: [text] = []
+    for node in graph.nodes: known.push(node.id)
+    var changed: [text] = []
+    for uid in changed_uids:
+        if not known.contains(uid): return Err("trace_missing_uid")
+        if changed.contains(uid): return Err("trace_duplicate_uid")
+        changed.push(uid)
+    var dependencies: [TraceDependency] = []
+    for edge in graph.edges:
+        if edge.relation == "depends_on":
+            dependencies.push(TraceDependency(owner_path: edge.from_id, kind: TraceDependencyKind.Artifact, key: edge.to_id))
+    val plan = plan_trace_invalidation(TraceInvalidationInput(known_paths: known,
+        changed_paths: changed, changed_identities: [], changed_memberships: [], changed_configurations: [],
+        dependencies: dependencies, dependency_inventory_complete: true, policy_changed: false,
+        extractor_changed: false, schema_changed: false, max_affected: nodes))
+    if not plan.complete or plan.full_rebuild: return Err("trace_quota_exceeded")
+    Ok(plan.affected_paths)
+
+# Production owners supply dependency completeness and identity/membership/config
+# changes. A complete graph alone does not prove complete receipt dependencies.
+# Full rebuild is a required action, never a claim that rebuilding occurred.
+pub fn plan_workflow_invalidation(input: TraceInvalidationInput,
+    max_work: i64) -> Result<TraceInvalidation, text>:
+    val nodes = input.known_paths.len() + input.changed_paths.len() + 1
+    val width = nodes + input.changed_identities.len() +
+        input.changed_memberships.len() + input.changed_configurations.len() + 1
+    val records = input.dependencies.len() + nodes
+    if max_work < 1 or width > max_work / nodes: return Err("trace_quota_exceeded")
+    val probes = nodes * width
+    if records > max_work / probes: return Err("trace_quota_exceeded")
+    val plan = plan_trace_invalidation(input)
+    if not plan.complete: return Err("trace_quota_exceeded")
+    Ok(plan)

@@ -1,0 +1,138 @@
+# @req REQ-001 REQ-003 REQ-006 REQ-008 REQ-010
+# @cover src/lifecycle/workflow/trace.spl
+use std.spec.*
+use lifecycle.workflow.trace.*
+use std.common.traceability.graph_types_v1.*
+use std.common.traceability.incremental.{TraceInvalidationInput}
+use .lifecycle_workflow_fixtures.*
+
+fn trace_query_error(result: Result<[TraceGraphEdgeV1], text>) -> text:
+    match result:
+        case Ok(edges): "unexpected_success:" + edges.len().to_text()
+        case Err(reason): reason
+
+describe "Authenticated workflow trace snapshots":
+    it "rejects result exhaustion instead of returning a truncated success":
+        step("query checked trace in both directions")
+        var graph = workflow_fixture_graph()
+        graph.nodes.push(TraceGraphNodeV1(id: "symbol-c", kind: "symbol", title: "C"))
+        graph.edges.push(TraceGraphEdgeV1(id: "edge-a-c", from_id: "symbol-a", relation: "depends_on", to_id: "symbol-c"))
+        graph.edge_origins.push(workflow_fixture_origin("edge-a-c"))
+        var query = workflow_fixture_query()
+        query.max_results = 1
+        val result = query_workflow_trace(graph, query, WorkflowFixtureTraceAuthorityV1(allow_second_edge: true))
+        expect(trace_query_error(result)).to_equal("trace_quota_exceeded")
+
+    it "computes three-node closure and terminates on a dependency cycle":
+        step("invalidate changed dependencies")
+        var graph = workflow_fixture_graph()
+        graph.nodes.push(TraceGraphNodeV1(id: "symbol-c", kind: "symbol", title: "C"))
+        graph.edges.push(TraceGraphEdgeV1(id: "edge-b-c", from_id: "symbol-b", relation: "depends_on", to_id: "symbol-c"))
+        graph.edge_origins.push(workflow_fixture_origin("edge-b-c"))
+        match invalidate_workflow_trace(graph, ["symbol-c"], 10000):
+            case Ok(affected): expect(affected.len()).to_equal(3)
+            case Err(reason): fail(reason)
+        graph.edges.push(TraceGraphEdgeV1(id: "edge-c-a", from_id: "symbol-c", relation: "depends_on", to_id: "symbol-a"))
+        graph.edge_origins.push(workflow_fixture_origin("edge-c-a"))
+        match invalidate_workflow_trace(graph, ["symbol-c"], 10000):
+            case Ok(affected): expect(affected.len()).to_equal(3)
+            case Err(reason): fail(reason)
+
+    it "rejects missing UID and duplicate graph identities":
+        step("query checked trace in both directions")
+        var query = workflow_fixture_query()
+        query.node_uid = "missing"
+        expect(trace_query_error(query_workflow_trace(workflow_fixture_graph(), query, WorkflowFixtureTraceAuthorityV1()))).to_equal("trace_missing_uid")
+        var graph = workflow_fixture_graph()
+        graph.nodes.push(graph.nodes[0])
+        expect(trace_query_error(query_workflow_trace(graph, workflow_fixture_query(), WorkflowFixtureTraceAuthorityV1()))).to_equal("trace_invalid_graph:duplicate_identifier")
+
+    it "returns the identical checked edge in both directions":
+        step("query checked trace in both directions")
+        var query = workflow_fixture_query()
+        val graph = workflow_fixture_graph()
+        val forward = query_workflow_trace(graph, query, WorkflowFixtureTraceAuthorityV1())
+        query.direction = "reverse"
+        query.node_uid = "symbol-b"
+        val reverse = query_workflow_trace(graph, query, WorkflowFixtureTraceAuthorityV1())
+        match forward:
+            case Ok(edges):
+                expect(edges.len()).to_equal(1)
+                expect(edges[0].id).to_equal("edge-a-b")
+            case Err(reason): fail(reason)
+        match reverse:
+            case Ok(edges):
+                expect(edges.len()).to_equal(1)
+                expect(edges[0].from_id).to_equal("symbol-a")
+                expect(edges[0].to_id).to_equal("symbol-b")
+            case Err(reason): fail(reason)
+
+    it "denies before validating a malformed private graph":
+        step("authorize workflow access")
+        var graph = workflow_fixture_graph()
+        graph.snapshot.id = ""
+        val result = query_workflow_trace(graph, workflow_fixture_query(), WorkflowFixtureTraceAuthorityV1(allowed: false))
+        expect(trace_query_error(result)).to_equal("workflow_unauthorized")
+
+    it "rejects stale graph context and unverified links":
+        step("query checked trace in both directions")
+        var query = workflow_fixture_query()
+        query.source_revision = "ffffffffffffffffffffffffffffffffffffffff"
+        val stale = query_workflow_trace(workflow_fixture_graph(), query, WorkflowFixtureTraceAuthorityV1())
+        expect(trace_query_error(stale)).to_equal("trace_unchecked")
+        val forged = query_workflow_trace(workflow_fixture_graph(), workflow_fixture_query(), WorkflowFixtureTraceAuthorityV1(edge_verified: false))
+        expect(trace_query_error(forged)).to_equal("trace_unchecked")
+
+    it "rejects invalid direction and exhausted work":
+        step("query checked trace in both directions")
+        var query = workflow_fixture_query()
+        query.direction = "sideways"
+        expect(trace_query_error(query_workflow_trace(workflow_fixture_graph(), query, WorkflowFixtureTraceAuthorityV1()))).to_equal("trace_invalid_direction")
+        query.direction = "forward"
+        query.max_work = 1
+        expect(trace_query_error(query_workflow_trace(workflow_fixture_graph(), query, WorkflowFixtureTraceAuthorityV1()))).to_equal("trace_quota_exceeded")
+
+    it "invalidates transitive dependencies and rejects duplicate changed UIDs":
+        step("invalidate changed dependencies")
+        match invalidate_workflow_trace(workflow_fixture_graph(), ["symbol-b"], 10000):
+            case Ok(affected):
+                expect(affected.len()).to_equal(2)
+                expect(affected.contains("symbol-a")).to_equal(true)
+            case Err(reason): fail(reason)
+        match invalidate_workflow_trace(workflow_fixture_graph(), ["symbol-b", "symbol-b"], 10000):
+            case Ok(affected): fail("unexpected closure")
+            case Err(reason): expect(reason).to_equal("trace_duplicate_uid")
+
+    it "requires a full rebuild when dependency inventory is incomplete":
+        step("invalidate changed dependencies")
+        val input = TraceInvalidationInput(known_paths: ["a", "b"], changed_paths: [],
+            changed_identities: [], changed_memberships: [], changed_configurations: [], dependencies: [],
+            dependency_inventory_complete: false, policy_changed: false, extractor_changed: false,
+            schema_changed: false, max_affected: 10)
+        match plan_workflow_invalidation(input, 10000):
+            case Ok(plan):
+                expect(plan.full_rebuild).to_equal(true)
+                expect(plan.complete).to_equal(true)
+                expect(plan.affected_paths.len()).to_equal(2)
+            case Err(reason): fail(reason)
+
+    it "requires full rebuild on policy and schema identity changes":
+        step("invalidate changed dependencies")
+        var input = TraceInvalidationInput(known_paths: ["a", "b"], changed_paths: [],
+            changed_identities: [], changed_memberships: [], changed_configurations: [], dependencies: [],
+            dependency_inventory_complete: true, policy_changed: true, extractor_changed: false,
+            schema_changed: false, max_affected: 10)
+        match plan_workflow_invalidation(input, 10000):
+            case Ok(plan):
+                expect(plan.full_rebuild).to_equal(true)
+                expect(plan.affected_paths.len()).to_equal(2)
+                expect(plan.reasons.contains("policy identity changed")).to_equal(true)
+            case Err(reason): fail(reason)
+        input.policy_changed = false
+        input.schema_changed = true
+        match plan_workflow_invalidation(input, 10000):
+            case Ok(plan):
+                expect(plan.full_rebuild).to_equal(true)
+                expect(plan.affected_paths.len()).to_equal(2)
+                expect(plan.reasons.contains("schema identity changed")).to_equal(true)
+            case Err(reason): fail(reason)

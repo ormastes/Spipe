@@ -1,0 +1,85 @@
+"""Incident candidates and restricted read-only owner ports. No ambient I/O."""
+use lifecycle.contracts.{LifecycleRunV1, GateRequirementV1, GateEvidenceV1}
+
+pub struct IncidentEventV1:
+    event_id: text
+    kind: text
+    occurred_at_ms: i64
+    evidence_sha256: text
+    summary: text
+
+pub struct IncidentV1:
+    # Internal spipe-incident-state/1 candidate, never the canonical incident
+    # aggregate/wire record from schemas/lifecycle/incident.sdn.
+    schema: text
+    incident_id: text
+    scope_id: text
+    run: LifecycleRunV1
+    severity: text
+    state: text
+    generation: i64
+    timeline: [IncidentEventV1]
+
+pub struct IncidentActionV1:
+    event: IncidentEventV1
+    target_state: text
+    expected_generation: i64
+    requirements: [GateRequirementV1]
+    evidence: [GateEvidenceV1]
+
+pub trait IncidentAuthorityV1:
+    fn authorize_incident(self, scope_id: text, incident_id: text, action: text) -> bool
+    # Authenticate the current snapshot and the COMPLETE target policy, including
+    # observation-window/persistent-state recovery rules, before any gate lookup.
+    fn authorize_action(self, incident: IncidentV1, action: IncidentActionV1) -> bool
+    fn authorize_run_rebind(self, incident: IncidentV1, next_run: LifecycleRunV1) -> bool
+
+pub struct DumpManifestV1:
+    schema: text
+    dump_id: text
+    incident_id: text
+    scope_id: text
+    source_revision: text
+    executable_sha256: text
+    collection_sha256: text
+    content_sha256: text
+    byte_length: i64
+    access_class: text
+    format: text
+    collected_at_ms: i64
+    collection_loss: text
+    redaction_state: text
+
+pub struct DumpSliceV1:
+    dump_id: text
+    offset: i64
+    bytes: [u8]
+    content_sha256: text
+
+pub trait DumpOwnerPortV1:
+    fn authorize_dump(self, scope_id: text, incident_id: text, dump_id: text, operation: text) -> bool
+    fn catalog(self, scope_id: text, incident_id: text, maximum_items: i64) -> Result<[DumpManifestV1], text>
+    fn read_slice(self, manifest: DumpManifestV1, offset: i64, maximum_bytes: i64) -> Result<DumpSliceV1, text>
+    fn verify_manifest(self, manifest: DumpManifestV1) -> bool
+    fn verify_slice(self, manifest: DumpManifestV1, slice: DumpSliceV1) -> bool
+
+pub struct OfflineDebugRequestV1:
+    incident_id: text
+    scope_id: text
+    manifest: DumpManifestV1
+    query: text
+    maximum_bytes: i64
+
+pub struct OfflineDebugResultV1:
+    source_revision: text
+    dump_sha256: text
+    adapter_id: text
+    evidence_sha256: text
+    summary: text
+
+pub trait OfflineDebugPortV1:
+    # Trusted owner authenticates manifest and permits only local read-only
+    # queries. Never pass query text to a command shell or a live target.
+    fn authorize_query(self, request: OfflineDebugRequestV1) -> bool
+    fn query(self, request: OfflineDebugRequestV1) -> Result<OfflineDebugResultV1, text>
+    fn verify_result(self, request: OfflineDebugRequestV1, result: OfflineDebugResultV1) -> bool

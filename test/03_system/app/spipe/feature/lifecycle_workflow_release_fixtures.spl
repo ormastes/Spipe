@@ -1,0 +1,60 @@
+"""Exact-value release and graph fixtures; never production authority."""
+use lifecycle.workflow.release_trace.*
+use std.common.traceability.graph_types_v1.*
+use std.common.traceability.graph_encode_v1.{trace_graph_encode_v1}
+use .lifecycle_fixtures.*
+use .lifecycle_workflow_fixtures.*
+
+pub fn workflow_fixture_release_link() -> WorkflowReleaseLinkV1:
+    WorkflowReleaseLinkV1(schema: "spipe-workflow-release-link/1", uid: "release-link-fixture",
+        run_id: "run-fixture", authority_scope: "fixture-scope", source_revision: FIXTURE_SOURCE,
+        policy_sha256: FIXTURE_DIGEST, graph_snapshot_id: "snapshot-fixture",
+        requirement_uid: "requirement-fixture", criterion_uid: "criterion-fixture", symbol_uid: "symbol-a",
+        test_uid: "test-fixture", observation_uid: "observation-fixture", evidence_uid: "evidence-fixture",
+        build_sha256: FIXTURE_EXECUTABLE, verification_sha256: FIXTURE_EVIDENCE,
+        release_sha256: FIXTURE_INPUTS, release_revision: FIXTURE_SOURCE,
+        executable_sha256: FIXTURE_EXECUTABLE, input_sha256: FIXTURE_INPUTS)
+
+pub fn workflow_fixture_release_graph() -> TraceGraphV1:
+    var graph = workflow_fixture_graph()
+    graph.nodes = [TraceGraphNodeV1(id: "requirement-fixture", kind: "requirement", title: "Requirement"),
+        TraceGraphNodeV1(id: "criterion-fixture", kind: "criterion", title: "Acceptance scenario"),
+        TraceGraphNodeV1(id: "test-fixture", kind: "test_case", title: "Acceptance test"),
+        TraceGraphNodeV1(id: "symbol-a", kind: "symbol", title: "Implementation"),
+        TraceGraphNodeV1(id: "observation-fixture", kind: "observation", title: "Verified run"),
+        TraceGraphNodeV1(id: "evidence-fixture", kind: "evidence_artifact", title: "Verification evidence")]
+    graph.test_definitions = [TraceGraphTestDefinitionV1(entity_id: "test-fixture", test_kind: "acceptance",
+        identity_scope: "stable", definition_id: "test-fixture", parameter_digest_available: false, parameter_digest: "")]
+    graph.edges = [TraceGraphEdgeV1(id: "edge-req-criterion", from_id: "requirement-fixture", relation: "decomposes_to", to_id: "criterion-fixture"),
+        TraceGraphEdgeV1(id: "edge-criterion-test", from_id: "criterion-fixture", relation: "accepted_by", to_id: "test-fixture"),
+        TraceGraphEdgeV1(id: "edge-test-symbol", from_id: "test-fixture", relation: "targets", to_id: "symbol-a"),
+        TraceGraphEdgeV1(id: "edge-test-observation", from_id: "test-fixture", relation: "observed_in", to_id: "observation-fixture"),
+        TraceGraphEdgeV1(id: "edge-observation-evidence", from_id: "observation-fixture", relation: "produced", to_id: "evidence-fixture")]
+    graph.edge_origins = [for edge in graph.edges: workflow_fixture_origin(edge.id)]
+    graph
+
+pub class WorkflowFixtureReleaseAuthorityV1 with WorkflowReleaseTraceAuthorityV1:
+    allowed: bool = true
+    authenticated: bool = true
+    fn authorize(scope: text, run_id: text) -> bool:
+        self.allowed and scope == "fixture-scope" and run_id == "run-fixture"
+    fn authenticate(link: WorkflowReleaseLinkV1, graph: TraceGraphV1) -> bool:
+        if not self.authenticated: return false
+        val expected = workflow_fixture_release_link()
+        if link.schema != expected.schema or link.uid != expected.uid or link.run_id != expected.run_id or
+            link.authority_scope != expected.authority_scope or link.source_revision != expected.source_revision or
+            link.policy_sha256 != expected.policy_sha256 or link.graph_snapshot_id != expected.graph_snapshot_id or
+            link.requirement_uid != expected.requirement_uid or link.criterion_uid != expected.criterion_uid or
+            link.symbol_uid != expected.symbol_uid or link.test_uid != expected.test_uid or
+            link.observation_uid != expected.observation_uid or link.evidence_uid != expected.evidence_uid or
+            link.build_sha256 != expected.build_sha256 or link.verification_sha256 != expected.verification_sha256 or
+            link.release_sha256 != expected.release_sha256 or link.release_revision != expected.release_revision or
+            link.executable_sha256 != expected.executable_sha256 or link.input_sha256 != expected.input_sha256: return false
+        val canonical = trace_graph_encode_v1(graph, trace_graph_codec_limits_v1())
+        val expected_graph = trace_graph_encode_v1(workflow_fixture_release_graph(), trace_graph_codec_limits_v1())
+        match canonical:
+            case Ok(source):
+                match expected_graph:
+                    case Ok(expected_source): source == expected_source
+                    case Err(issue): false
+            case Err(issue): false

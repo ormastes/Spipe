@@ -1,0 +1,34 @@
+schema: "spipe-lifecycle-learning-capability-proposals/1"
+status: "proposed_for_canonical_generator"
+capabilities:
+  - id: "learning.wiki_curate/1"
+    role: "knowledge-curator"
+    phase: "learning"
+    operations: ["knowledge.read", "knowledge.review"]
+    authority: "canonical_scope_owner_before_discovery"
+    evidence: "authenticated_claim_review_and_immutable_provenance"
+  - id: "learning.prune/1"
+    role: "knowledge-curator"
+    phase: "learning"
+    operations: ["knowledge.read", "knowledge.review"]
+    authority: "canonical_scope_owner_before_discovery"
+    evidence: "reviewed_archive_or_alias_with_active_same_scope_target"
+  - id: "learning.bug_eval/1"
+    role: "eval-curator"
+    phase: "learning"
+    operations: ["benchmark.read"]
+    authority: "cleared_frozen_corpus_owner_with_separate_scorer"
+    evidence: "family_repository_time_partition_and_hidden_answer_isolation"
+  - id: "learning.model_ladder/1"
+    role: "model-evaluator"
+    phase: "learning"
+    operations: ["learning.proposal", "learning.record_attempt"]
+    authority: "authenticated_trial_and_attempt_owner"
+    evidence: "matched_repeated_trials_and_pending_review_proposal"
+  - id: "learning.skill_maintain/1"
+    role: "knowledge-curator"
+    phase: "learning"
+    operations: ["knowledge.read"]
+    authority: "canonical_scope_owner_before_discovery"
+    evidence: "proposal_with_passing_and_adversarial_rule_fixtures"
+excluded_permissions: ["model.train", "model.promote", "knowledge.export", "knowledge.publish"]

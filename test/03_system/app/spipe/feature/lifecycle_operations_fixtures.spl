@@ -1,0 +1,169 @@
+"""Contract-only fixtures; these do not authenticate real incidents or tools."""
+use std.spec.*
+use lifecycle.operations.contracts.*
+use lifecycle.contracts.*
+use std.common.crypto.sha256.{sha256_u8_hex}
+use .lifecycle_fixtures.*
+
+# Test-only mutable authority state changed by the actual protected callback.
+# It models revocation independently of copied value-semantic port objects.
+var OPERATIONS_FIXTURE_REVOKED = false
+
+pub fn reset_operations_revocation():
+    OPERATIONS_FIXTURE_REVOKED = false
+
+pub class RevokingOperationsDumpPort with DumpOwnerPortV1:
+    revoke_at: text
+    fn authorize_dump(scope_id: text, incident_id: text, dump_id: text, operation: text) -> bool:
+        not OPERATIONS_FIXTURE_REVOKED
+    fn catalog(scope_id: text, incident_id: text, maximum_items: i64) -> Result<[DumpManifestV1], text>:
+        if OPERATIONS_FIXTURE_REVOKED: fail("catalog invoked after revocation")
+        if self.revoke_at == "catalog": OPERATIONS_FIXTURE_REVOKED = true
+        Ok([fixture_operations_manifest()])
+    fn verify_manifest(manifest: DumpManifestV1) -> bool:
+        if OPERATIONS_FIXTURE_REVOKED: fail("manifest authenticator invoked after revocation")
+        if self.revoke_at == "manifest": OPERATIONS_FIXTURE_REVOKED = true
+        true
+    fn read_slice(manifest: DumpManifestV1, offset: i64, maximum_bytes: i64) -> Result<DumpSliceV1, text>:
+        if OPERATIONS_FIXTURE_REVOKED: fail("slice provider invoked after revocation")
+        val port = fixture_operations_dump_port()
+        val result = port.read_slice(manifest, offset, maximum_bytes)
+        if self.revoke_at == "read": OPERATIONS_FIXTURE_REVOKED = true
+        result
+    fn verify_slice(manifest: DumpManifestV1, slice: DumpSliceV1) -> bool:
+        if OPERATIONS_FIXTURE_REVOKED: fail("slice authenticator invoked after revocation")
+        if self.revoke_at == "slice": OPERATIONS_FIXTURE_REVOKED = true
+        true
+
+pub class RevokingOperationsDebugPort with OfflineDebugPortV1:
+    revoke_at: text
+    fn authorize_query(request: OfflineDebugRequestV1) -> bool:
+        not OPERATIONS_FIXTURE_REVOKED
+    fn query(request: OfflineDebugRequestV1) -> Result<OfflineDebugResultV1, text>:
+        if OPERATIONS_FIXTURE_REVOKED: fail("offline query invoked after revocation")
+        val port = fixture_operations_debug_port()
+        val result = port.query(request)
+        if self.revoke_at == "query": OPERATIONS_FIXTURE_REVOKED = true
+        result
+    fn verify_result(request: OfflineDebugRequestV1, result: OfflineDebugResultV1) -> bool:
+        if OPERATIONS_FIXTURE_REVOKED: fail("offline authenticator invoked after revocation")
+        if self.revoke_at == "result": OPERATIONS_FIXTURE_REVOKED = true
+        true
+
+pub class FixtureOperationsIncidentAuthority with IncidentAuthorityV1:
+    allowed: bool = true
+    action_allowed: bool = true
+    fail_action: bool = false
+    fn authorize_incident(scope_id: text, incident_id: text, action: text) -> bool:
+        self.allowed and scope_id == "private-fixture" and incident_id == "incident-fixture"
+    fn authorize_action(incident: IncidentV1, action: IncidentActionV1) -> bool:
+        if self.fail_action: fail("unauthorized action inspected")
+        self.action_allowed and action.requirements.len() == 1
+    fn authorize_run_rebind(incident: IncidentV1, next_run: LifecycleRunV1) -> bool:
+        if self.fail_action: fail("unauthorized rebind inspected")
+        self.action_allowed
+
+pub fn fixture_operations_incident_authority() -> FixtureOperationsIncidentAuthority:
+    FixtureOperationsIncidentAuthority()
+
+pub fn fixture_operations_incident() -> IncidentV1:
+    IncidentV1(schema: "spipe-incident-state/1", incident_id: "incident-fixture", scope_id: "private-fixture",
+        run: fixture_run(), severity: "P1", state: "detected", generation: 0, timeline: [])
+
+pub fn fixture_operations_event() -> IncidentEventV1:
+    IncidentEventV1(event_id: "event-fixture", kind: "triaged", occurred_at_ms: 140,
+        evidence_sha256: FIXTURE_EVIDENCE, summary: "fixture triage")
+
+pub fn fixture_operations_action() -> IncidentActionV1:
+    IncidentActionV1(event: fixture_operations_event(), target_state: "triaged", expected_generation: 0,
+        requirements: [fixture_requirement()], evidence: [fixture_evidence()])
+
+pub fn fixture_operations_manifest() -> DumpManifestV1:
+    val bytes: [u8] = [97, 98, 99]
+    DumpManifestV1(schema: "spipe-dump-manifest/1", dump_id: "dump-fixture", incident_id: "incident-fixture",
+        scope_id: "private-fixture", source_revision: FIXTURE_SOURCE, content_sha256: sha256_u8_hex(bytes),
+        executable_sha256: FIXTURE_EXECUTABLE, collection_sha256: FIXTURE_INPUTS,
+        byte_length: 3, access_class: "restricted", format: "core", collected_at_ms: 100,
+        collection_loss: "none", redaction_state: "unredacted")
+
+pub class FixtureOperationsDumpPort with DumpOwnerPortV1:
+    allowed: bool = true
+    verified: bool = true
+    fail_provider: bool = false
+    bad_hash: bool = false
+    bad_scope: bool = false
+    extra_bytes: bool = false
+    slice_verified: bool = true
+    fn authorize_dump(scope_id: text, incident_id: text, dump_id: text, operation: text) -> bool:
+        self.allowed and scope_id == "private-fixture" and incident_id == "incident-fixture" and
+            (dump_id == "" or dump_id == "dump-fixture") and ["catalog", "read"].contains(operation)
+    fn catalog(scope_id: text, incident_id: text, maximum_items: i64) -> Result<[DumpManifestV1], text>:
+        if self.fail_provider: fail("denied catalog reached provider")
+        var manifest = fixture_operations_manifest()
+        if self.bad_scope: manifest.scope_id = "other-private"
+        Ok([manifest])
+    fn read_slice(manifest: DumpManifestV1, offset: i64, maximum_bytes: i64) -> Result<DumpSliceV1, text>:
+        if self.fail_provider: fail("denied read reached provider")
+        val all_bytes: [u8] = [97, 98, 99]
+        var bytes: [u8] = []
+        var index = offset
+        while index < offset + maximum_bytes:
+            bytes.push(all_bytes[index])
+            index = index + 1
+        if self.extra_bytes: bytes.push(100)
+        var digest = sha256_u8_hex(bytes)
+        if self.bad_hash: digest = FIXTURE_EVIDENCE
+        Ok(DumpSliceV1(dump_id: manifest.dump_id, offset: offset, bytes: bytes, content_sha256: digest))
+    fn verify_manifest(manifest: DumpManifestV1) -> bool:
+        if self.fail_provider: fail("denied manifest reached cache/authenticator")
+        self.verified and manifest == fixture_operations_manifest()
+    fn verify_slice(manifest: DumpManifestV1, slice: DumpSliceV1) -> bool:
+        if self.fail_provider: fail("denied slice reached authenticator")
+        self.slice_verified
+
+pub fn fixture_operations_dump_port() -> FixtureOperationsDumpPort:
+    FixtureOperationsDumpPort()
+
+pub fn fixture_operations_debug_request() -> OfflineDebugRequestV1:
+    OfflineDebugRequestV1(incident_id: "incident-fixture", scope_id: "private-fixture",
+        manifest: fixture_operations_manifest(), query: "backtrace", maximum_bytes: 256)
+
+pub class FixtureOperationsDebugPort with OfflineDebugPortV1:
+    allowed: bool = true
+    verified: bool = true
+    fail_provider: bool = false
+    bad_hash: bool = false
+    fn authorize_query(request: OfflineDebugRequestV1) -> bool:
+        self.allowed and request.scope_id == "private-fixture" and request.incident_id == "incident-fixture"
+    fn query(request: OfflineDebugRequestV1) -> Result<OfflineDebugResultV1, text>:
+        if self.fail_provider: fail("denied offline query reached provider")
+        var digest = request.manifest.content_sha256
+        if self.bad_hash: digest = FIXTURE_EVIDENCE
+        Ok(OfflineDebugResultV1(source_revision: FIXTURE_SOURCE, dump_sha256: digest,
+            adapter_id: "fixture-readonly", evidence_sha256: FIXTURE_EVIDENCE, summary: "fixture frame"))
+    fn verify_result(request: OfflineDebugRequestV1, result: OfflineDebugResultV1) -> bool:
+        if self.fail_provider: fail("denied offline result reached cache/authenticator")
+        self.verified
+
+pub fn fixture_operations_debug_port() -> FixtureOperationsDebugPort:
+    FixtureOperationsDebugPort()
+
+pub fn operations_incident_error(result: Result<IncidentV1, text>) -> text:
+    match result:
+        case Ok(value): "unexpected_success:" + value.state
+        case Err(reason): reason
+
+pub fn operations_catalog_error(result: Result<[DumpManifestV1], text>) -> text:
+    match result:
+        case Ok(value): "unexpected_success"
+        case Err(reason): reason
+
+pub fn operations_slice_error(result: Result<DumpSliceV1, text>) -> text:
+    match result:
+        case Ok(value): "unexpected_success"
+        case Err(reason): reason
+
+pub fn operations_debug_error(result: Result<OfflineDebugResultV1, text>) -> text:
+    match result:
+        case Ok(value): "unexpected_success"
+        case Err(reason): reason

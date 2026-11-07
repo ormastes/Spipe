@@ -1,0 +1,113 @@
+# @req REQ-002 REQ-003 REQ-006 REQ-008
+# @cover src/lifecycle/workflow/store.spl
+use std.spec.*
+use lifecycle.contracts.*
+use lifecycle.workflow.store.*
+use lifecycle.workflow.status.*
+use .lifecycle_fixtures.*
+use .lifecycle_workflow_fixtures.*
+
+fn workflow_error(result: Result<LifecycleRunV1, text>) -> text:
+    match result:
+        case Ok(run): "unexpected_success:" + run.state
+        case Err(reason): reason
+
+describe "Authorized workflow transactions":
+    it "reports authorized status and denies unauthorized status":
+        step("authorize workflow access")
+        var store = WorkflowFixtureStoreV1(run: fixture_run())
+        match workflow_status(workflow_fixture_context(), "run-fixture", store):
+            case Ok(status):
+                expect(status.run.generation).to_equal(4)
+                expect(status.next_state).to_equal("test_ready")
+                expect(status.decisions.len()).to_equal(0)
+            case Err(reason): fail(reason)
+        var denied = WorkflowFixtureStoreV1(run: fixture_run(), allowed: false)
+        match workflow_status(workflow_fixture_context(), "run-fixture", denied):
+            case Ok(status): fail(status.run.state)
+            case Err(reason): expect(reason).to_equal("workflow_unauthorized")
+        var context = workflow_fixture_context()
+        context.policy_sha256 = FIXTURE_EXECUTABLE
+        match workflow_status(context, "run-fixture", store):
+            case Ok(status): fail(status.run.state)
+            case Err(reason): expect(reason).to_equal("workflow_context_mismatch")
+
+    it "publishes checked successor and immutable receipt together":
+        step("commit checked transition")
+        var store = WorkflowFixtureStoreV1(run: fixture_run())
+        val result = commit_workflow_transition(workflow_fixture_context(), "run-fixture", 4,
+            "test_ready", [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), store)
+        match result:
+            case Ok(run): expect(run.generation).to_equal(5)
+            case Err(reason): fail(reason)
+        expect(store.run.state).to_equal("test_ready")
+        expect(store.persisted.len()).to_equal(1)
+        expect(store.persisted[0].evidence_sha256).to_equal(FIXTURE_EVIDENCE)
+
+    it "denies before lookup even when the store is unavailable":
+        step("authorize workflow access")
+        var store = WorkflowFixtureStoreV1(run: fixture_run(), allowed: false, available: false)
+        val result = commit_workflow_transition(workflow_fixture_context(), "run-fixture", 4,
+            "test_ready", [fixture_requirement()], [], [], FixtureLifecycleAuthorityV1(), store)
+        expect(workflow_error(result)).to_equal("workflow_unauthorized")
+        expect(store.run.generation).to_equal(4)
+
+    it "rejects stale generation and exact source mismatch":
+        step("reject stale or replayed receipt")
+        var store = WorkflowFixtureStoreV1(run: fixture_run())
+        val stale = commit_workflow_transition(workflow_fixture_context(), "run-fixture", 3,
+            "test_ready", [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), store)
+        expect(workflow_error(stale)).to_equal("stale_generation")
+        var context = workflow_fixture_context()
+        context.source_revision = "ffffffffffffffffffffffffffffffffffffffff"
+        val mismatched = commit_workflow_transition(context, "run-fixture", 4,
+            "test_ready", [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), store)
+        expect(workflow_error(mismatched)).to_equal("workflow_context_mismatch")
+        expect(store.persisted.len()).to_equal(0)
+
+    it "retains old state when atomic owner rejects a conflict":
+        step("commit checked transition")
+        var store = WorkflowFixtureStoreV1(run: fixture_run(), conflict: true)
+        val result = commit_workflow_transition(workflow_fixture_context(), "run-fixture", 4,
+            "test_ready", [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), store)
+        expect(workflow_error(result)).to_equal("workflow_store_conflict")
+        expect(store.run.generation).to_equal(4)
+        expect(store.persisted.len()).to_equal(0)
+
+    it "rejects receipt reuse without partial publication":
+        step("reject stale or replayed receipt")
+        var store = WorkflowFixtureStoreV1(run: fixture_run(), persisted: [fixture_evidence()])
+        val result = commit_workflow_transition(workflow_fixture_context(), "run-fixture", 4,
+            "test_ready", [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), store)
+        expect(workflow_error(result)).to_equal("workflow_receipt_replay")
+        expect(store.persisted.len()).to_equal(1)
+        expect(store.run.generation).to_equal(4)
+
+    it "rechecks the owner's clock at publication":
+        step("commit checked transition")
+        var store = WorkflowFixtureStoreV1(run: fixture_run(), commit_now_ms: 200)
+        val result = commit_workflow_transition(workflow_fixture_context(), "run-fixture", 4,
+            "test_ready", [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), store)
+        expect(workflow_error(result)).to_equal("invalid_evidence_time")
+        expect(store.persisted.len()).to_equal(0)
+
+    it "reports persistence failure without publishing a successor":
+        step("commit checked transition")
+        var store = WorkflowFixtureStoreV1(run: fixture_run(), fail_commit: true)
+        val result = commit_workflow_transition(workflow_fixture_context(), "run-fixture", 4,
+            "test_ready", [fixture_requirement()], [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), store)
+        expect(workflow_error(result)).to_equal("workflow_store_unavailable")
+        expect(store.run.generation).to_equal(4)
+        expect(store.persisted.len()).to_equal(0)
+
+    it "explains a blocked next gate without mutating state":
+        step("explain blocked next phase")
+        val result = workflow_explain(fixture_run(), [fixture_requirement()], [], [], FixtureLifecycleAuthorityV1(), 150)
+        match result:
+            case Ok(decisions):
+                expect(decisions.len()).to_equal(1)
+                expect(decisions[0].reason).to_equal("not_run")
+            case Err(reason): fail(reason)
+        match workflow_next("blocked"):
+            case Ok(next): fail(next)
+            case Err(reason): expect(reason).to_equal("workflow_recovery_policy_required")

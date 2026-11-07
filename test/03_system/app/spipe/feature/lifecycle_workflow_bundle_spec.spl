@@ -1,0 +1,78 @@
+# @req REQ-003 REQ-006 REQ-008 REQ-009
+# @cover src/lifecycle/workflow/bundle.spl
+use std.spec.*
+use lifecycle.workflow.store.*
+use lifecycle.workflow.bundle.*
+use lifecycle.workflow.git_artifact.{git_artifact_ref}
+use std.common.sdn.value.{SdnValue}
+use std.common.sdn.encode.{sdn_encode_canonical}
+use .lifecycle_fixtures.*
+use .lifecycle_workflow_fixtures.*
+
+fn bundle_fixture_commit() -> WorkflowCommitV1:
+    val previous = fixture_run()
+    var next = fixture_run()
+    next.state = "test_ready"
+    next.generation = 5
+    WorkflowCommitV1(context: workflow_fixture_context(), previous: previous, next: next,
+        receipts: [fixture_evidence()], waivers: [fixture_waiver()], authority_scope: "fixture-scope")
+
+fn bundle_error(source: text) -> text:
+    match decode_workflow_bundle(source):
+        case Ok(bundle): "unexpected_success"
+        case Err(reason): reason
+
+describe "Canonical immutable workflow bundles":
+    it "round trips every evidence and waiver field without dropping context":
+        step("commit checked transition")
+        val commit = bundle_fixture_commit()
+        match encode_workflow_bundle(commit, FIXTURE_SOURCE):
+            case Ok(source):
+                match decode_workflow_bundle(source):
+                    case Ok(bundle):
+                        expect(bundle.previous_oid).to_equal(FIXTURE_SOURCE)
+                        expect(bundle.commit.receipts[0].selector).to_equal("lifecycle.acceptance")
+                        expect(bundle.commit.receipts[0].negative_failed_cases).to_equal(1)
+                        expect(bundle.commit.receipts[0].rationale).to_equal(fixture_evidence().rationale)
+                        expect(bundle.commit.waivers[0].compensating_control).to_equal("hold production promotion")
+                        match encode_workflow_bundle(bundle.commit, bundle.previous_oid):
+                            case Ok(again): expect(again).to_equal(source)
+                            case Err(reason): fail(reason)
+                    case Err(reason): fail(reason)
+            case Err(reason): fail(reason)
+
+    it "rejects extra fields and noncanonical spellings":
+        step("reject stale or replayed receipt")
+        match encode_workflow_bundle(bundle_fixture_commit(), FIXTURE_SOURCE):
+            case Ok(source):
+                expect(bundle_error(source + "\n")).to_equal("workflow_noncanonical_sdn")
+                match workflow_canonical_sdn(source):
+                    case Ok(value):
+                        match value:
+                            case Dict(fields):
+                                var changed = fields
+                                changed["unexpected"] = SdnValue.Bool(true)
+                                expect(bundle_error(sdn_encode_canonical(SdnValue.Dict(changed)))).to_equal("workflow_bundle_fields")
+                            case _: fail("bundle must be dictionary")
+                    case Err(reason): fail(reason)
+            case Err(reason): fail(reason)
+
+    it "rejects generation regression and malformed predecessor identity":
+        step("reject stale or replayed receipt")
+        var commit = bundle_fixture_commit()
+        commit.next.generation = 3
+        match encode_workflow_bundle(commit, FIXTURE_SOURCE):
+            case Ok(source): fail(source)
+            case Err(reason): expect(reason).to_equal("workflow_bundle_transition")
+        match encode_workflow_bundle(bundle_fixture_commit(), "../../main"):
+            case Ok(source): fail(source)
+            case Err(reason): expect(reason).to_equal("workflow_bundle_oid")
+
+    it "separates artifact kind scope and key in the local hashed ref":
+        step("authorize workflow access")
+        val run = git_artifact_ref("lifecycle_run", "scope-a", "key")
+        expect(run.starts_with("refs/spipe/lifecycle/")).to_equal(true)
+        expect(run.len()).to_equal(85)
+        expect(run == git_artifact_ref("evaluation_proposal", "scope-a", "key")).to_equal(false)
+        expect(run == git_artifact_ref("lifecycle_run", "scope-b", "key")).to_equal(false)
+        expect(run == git_artifact_ref("lifecycle_run", "scope-a", "other")).to_equal(false)

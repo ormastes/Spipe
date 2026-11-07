@@ -1,0 +1,137 @@
+"""Learning values; trusted owners are composed, never request-deserialized."""
+
+pub struct LearningScopeV1:
+    scope_uid: text
+    source_revision: text
+    policy_sha256: text
+
+pub struct KnowledgeClaimV1:
+    uid: text
+    scope: LearningScopeV1
+    content_sha256: text
+    origin_uid: text
+    origin_revision: text
+    origin_sha256: text
+    status: text
+    canonical_uid: text
+
+pub struct ClaimReviewV1:
+    claim_uid: text
+    expected_content_sha256: text
+    decision: text
+    replacement_uid: text
+    reviewer: text
+    evidence_sha256: text
+
+pub struct LearningDecisionV1:
+    outcome: text
+    reason: text
+    evidence_sha256: text
+
+pub struct BenchmarkCaseV1:
+    uid: text
+    root_cause_family: text
+    repository_uid: text
+    observed_at_ms: i64
+    split: text
+    symptom_sha256: text
+    answer_sha256: text
+    clearance_sha256: text
+
+pub struct BenchmarkFreezeV1:
+    uid: text
+    manifest_sha256: text
+    corpus_sha256: text
+    train_end_ms: i64
+    dev_end_ms: i64
+    held_out_end_ms: i64
+    cases: [BenchmarkCaseV1]
+
+# Deliberately no answer, answer digest, repository, family or scorer handle.
+pub struct BlindedCaseV1:
+    uid: text
+    symptom_sha256: text
+
+pub struct ModelTrialV1:
+    uid: text
+    attempt_uid: text
+    cohort_sha256: text
+    case_uid: text
+    seed: i64
+    repeat: i64
+    arm: text
+    model: text
+    revision: text
+    quantization: text
+    context_tokens: i64
+    prompt_sha256: text
+    wiki_sha256: text
+    skill_sha256: text
+    tool_sha256: text
+    solved_at: i64
+    correct_cause: bool
+    tests_passed: bool
+    regressions: i64
+    tool_calls: i64
+    safety_failures: i64
+    tokens: i64
+    cost_micros: i64
+    elapsed_ms: i64
+    peak_bytes: i64
+    receipt_sha256: text
+
+pub struct ModelLadderPolicyV1:
+    attempt_uid: text
+    cohort_sha256: text
+    repeats: i64
+    solve_k: i64
+    max_tokens: i64
+    max_cost_micros: i64
+    max_elapsed_ms: i64
+    max_peak_bytes: i64
+    minimum_delta_ppm: i64
+
+pub struct ModelLadderSummaryV1:
+    outcome: text
+    reason: text
+    trials: [ModelTrialV1]
+    policy: ModelLadderPolicyV1
+    pairs: i64
+    distinct_cases: i64
+    baseline_solve1: i64
+    candidate_solve1: i64
+    baseline_solvek: i64
+    candidate_solvek: i64
+    safety_failures: i64
+    correct_causes: i64
+    passing_tests: i64
+    regressions: i64
+    tool_calls: i64
+    tokens: i64
+    cost_micros: i64
+    elapsed_ms: i64
+    peak_bytes: i64
+    delta_ppm: i64
+    confidence_low_ppm: i64
+    confidence_high_ppm: i64
+    escalation: text
+
+pub trait LearningOwnerV1:
+    fn authorize(self, scope: LearningScopeV1, operation: text) -> bool
+    fn claims(self, scope: LearningScopeV1) -> [KnowledgeClaimV1]
+    fn verify_review(self, scope: LearningScopeV1, claim: KnowledgeClaimV1, review: ClaimReviewV1) -> bool
+    # Atomic CAS of COMPLETE source AND expected target; recheck target active,
+    # same-scope and nonalias in that transaction. nil target only for nonalias.
+    # Preserve origin; a changed target rejects even if source is unchanged.
+    fn commit_review(self, scope: LearningScopeV1, claim: KnowledgeClaimV1, review: ClaimReviewV1, expected_target: KnowledgeClaimV1?) -> bool
+    fn benchmark_case(self, scope: LearningScopeV1, case_uid: text, freeze: BenchmarkFreezeV1) -> BenchmarkCaseV1?
+    # Authenticates exact cases/corpus, cleared rights, no future evidence or hidden answers in retrieval.
+    fn verify_freeze(self, scope: LearningScopeV1, freeze: BenchmarkFreezeV1) -> bool
+    fn verify_trial(self, trial: ModelTrialV1) -> bool
+    # Binds policy, corpus, complete receipt set and required safety/privacy/license reviews.
+    fn verify_promotion(self, scope: LearningScopeV1, summary: ModelLadderSummaryV1) -> bool
+    # Exact immutable existing attempt bytes at scope.source_revision (or a
+    # versioned owner snapshot) establish binding, never a transient mutable read.
+    fn verify_attempt_binding(self, scope: LearningScopeV1, attempt_uid: text, source_path: text, source_sha256: text) -> bool
+    # Existing host .spipe/llm-finetune-process eval_results.sdn/decisions.sdn only.
+    fn record_attempt(self, scope: LearningScopeV1, summary: ModelLadderSummaryV1) -> bool

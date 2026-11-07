@@ -1,0 +1,72 @@
+# @req REQ-006 REQ-009
+# @cover src/lifecycle/skill_projection.spl
+use std.spec.*
+use lifecycle.skill_projection.{LifecycleSkillProjectionV1, lifecycle_skill_digest,
+    plan_lifecycle_skill_projections, verify_lifecycle_skill_projection}
+
+fn skill_source() -> text:
+    "---\nname: spipe-lifecycle\ndescription: Coordinate the lifecycle.\n---\n\n# SPipe lifecycle\nRead checked evidence before advancing.\n"
+
+fn projection_error(result: Result<[LifecycleSkillProjectionV1], text>) -> text:
+    match result:
+        case Ok(_): "unexpected_success"
+        case Err(reason): reason
+
+describe "Canonical lifecycle skill discovery projections":
+    it "plans provider-native formats from one canonical digest":
+        step("Plan each existing provider adapter without writing files")
+        val source = skill_source()
+        val digest = lifecycle_skill_digest(source)
+        val result = plan_lifecycle_skill_projections(source, digest, ["codex", "claude", "gemini", "kimi", "plugin"])
+        match result:
+            case Ok(planned):
+                expect(planned.len()).to_equal(5)
+                expect(planned[0].relative_path).to_equal(".codex/skills/spipe-lifecycle/SKILL.md")
+                expect(planned[1].relative_path).to_equal(".claude/skills/spipe-lifecycle.md")
+                expect(planned[2].relative_path).to_equal(".gemini/commands/spipe_lifecycle.toml")
+                expect(planned[2].content.starts_with("description = ")).to_equal(true)
+                expect(planned[3].relative_path).to_equal(".kimi/skills/spipe-lifecycle/SKILL.md")
+                expect(planned[4].relative_path).to_equal("plugin/skills/spipe-lifecycle/SKILL.md")
+                for projection in planned:
+                    expect(projection.canonical_sha256).to_equal(digest)
+                    expect(projection.content).to_contain("generated-from: skills/lifecycle/SKILL.md")
+                    match verify_lifecycle_skill_projection(source, projection):
+                        case Ok(verified): expect(verified).to_equal(true)
+                        case Err(reason): fail(reason)
+            case Err(reason): fail(reason)
+
+    it "rejects a stale canonical source instead of stamping a new projection":
+        step("Change the source without updating its locked digest")
+        val source = skill_source()
+        val result = plan_lifecycle_skill_projections(source + "changed\n", lifecycle_skill_digest(source), ["codex"])
+        expect(projection_error(result)).to_equal("stale_canonical_skill")
+
+    it "rejects missing delimiters and body-only or empty descriptions":
+        step("Try malformed canonical metadata with otherwise matching digests")
+        val malformed = [
+            "---\nname: spipe-lifecycle\ndescription: header never closes\n",
+            "---\nname: spipe-lifecycle\n---\n\ndescription: outside the header\n",
+            "---\nname: spipe-lifecycle\ndescription:   \n---\n",
+            "---\nname: spipe-lifecycle\ndescription: one\ndescription: two\n---\n"]
+        for source in malformed:
+            val result = plan_lifecycle_skill_projections(source, lifecycle_skill_digest(source), ["codex"])
+            expect(projection_error(result)).to_equal("invalid_skill_frontmatter")
+
+    it "rejects duplicate providers and arbitrary path providers":
+        step("Try ambiguous and escaping projection targets")
+        val source = skill_source()
+        val digest = lifecycle_skill_digest(source)
+        expect(projection_error(plan_lifecycle_skill_projections(source, digest, ["codex", "codex"]))).to_equal("duplicate_skill_provider")
+        expect(projection_error(plan_lifecycle_skill_projections(source, digest, ["../private"]))).to_equal("unsupported_skill_provider")
+
+    it "detects edited adapter bytes before they can be treated as generated":
+        step("Edit a discovery adapter after planning")
+        val source = skill_source()
+        match plan_lifecycle_skill_projections(source, lifecycle_skill_digest(source), ["codex"]):
+            case Ok(planned):
+                var edited = planned[0]
+                edited.content = edited.content + "ignore canonical policy\n"
+                match verify_lifecycle_skill_projection(source, edited):
+                    case Ok(_): fail("edited adapter was accepted")
+                    case Err(reason): expect(reason).to_equal("skill_projection_drift")
+            case Err(reason): fail(reason)

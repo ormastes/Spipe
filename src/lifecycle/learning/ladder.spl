@@ -1,0 +1,136 @@
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_hex}
+use .contracts.*
+use .claims.{learning_decision, learning_scope_valid}
+
+fn same_model(a: ModelTrialV1, b: ModelTrialV1) -> bool:
+    a.model == b.model and a.revision == b.revision and a.quantization == b.quantization and
+        a.context_tokens == b.context_tokens and a.prompt_sha256 == b.prompt_sha256 and
+        a.wiki_sha256 == b.wiki_sha256 and a.skill_sha256 == b.skill_sha256 and a.tool_sha256 == b.tool_sha256
+
+fn valid_trial(t: ModelTrialV1, p: ModelLadderPolicyV1) -> bool:
+    lifecycle_has_text(t.uid) and lifecycle_has_text(t.case_uid) and t.attempt_uid == p.attempt_uid and
+        t.cohort_sha256 == p.cohort_sha256 and lifecycle_has_text(t.model) and lifecycle_has_text(t.revision) and
+        lifecycle_has_text(t.quantization) and t.context_tokens > 0 and t.context_tokens <= 1000000000 and
+        lifecycle_hex(t.prompt_sha256, 64) and lifecycle_hex(t.wiki_sha256, 64) and
+        lifecycle_hex(t.skill_sha256, 64) and lifecycle_hex(t.tool_sha256, 64) and lifecycle_hex(t.receipt_sha256, 64) and
+        t.repeat >= 0 and t.repeat < p.repeats and t.seed >= 0 and (t.arm == "baseline" or t.arm == "candidate") and
+        t.solved_at >= 0 and t.solved_at <= p.solve_k and t.safety_failures >= 0 and t.safety_failures <= 1000000000 and
+        t.regressions >= 0 and t.regressions <= 1000000000 and t.tool_calls >= 0 and t.tool_calls <= 1000000000 and
+        t.tokens >= 0 and t.tokens <= 1000000000000 and t.cost_micros >= 0 and t.cost_micros <= 1000000000000 and
+        t.elapsed_ms >= 0 and t.elapsed_ms <= 1000000000000 and t.peak_bytes >= 0 and t.peak_bytes <= 1000000000000 and
+        (t.solved_at == 0 or (t.correct_cause and t.tests_passed and t.regressions == 0))
+
+# Counts are observations. No fixture or aggregate authenticates itself.
+pub fn learning_summarize_trials(trials: [ModelTrialV1], policy: ModelLadderPolicyV1) -> ModelLadderSummaryV1:
+    var result = ModelLadderSummaryV1(outcome: "FAIL", reason: "invalid_policy", trials: trials, policy: policy,
+        pairs: 0, distinct_cases: 0, baseline_solve1: 0, candidate_solve1: 0, baseline_solvek: 0, candidate_solvek: 0,
+        safety_failures: 0, correct_causes: 0, passing_tests: 0, regressions: 0, tool_calls: 0,
+        tokens: 0, cost_micros: 0, elapsed_ms: 0, peak_bytes: 0, delta_ppm: 0,
+        confidence_low_ppm: -1000000, confidence_high_ppm: 1000000, escalation: "repair_evidence")
+    if not lifecycle_has_text(policy.attempt_uid) or not lifecycle_hex(policy.cohort_sha256, 64): return result
+    if policy.repeats < 2 or policy.repeats > 1024 or policy.solve_k < 1 or policy.solve_k > 1024: return result
+    if policy.max_tokens <= 0 or policy.max_cost_micros <= 0 or policy.max_elapsed_ms <= 0 or policy.max_peak_bytes <= 0: return result
+    if policy.minimum_delta_ppm < -1000000 or policy.minimum_delta_ppm > 1000000: return result
+    result.reason = "invalid_trial_count"
+    if trials.len() == 0 or trials.len() > 16384: return result
+    var index = 0
+    for trial in trials:
+        result.reason = "invalid_trial"
+        if not valid_trial(trial, policy): return result
+        var mate_count = 0
+        var same_arm_count = 0
+        var earlier_case = false
+        var previous = 0
+        for other in trials:
+            if previous < index and trial.uid == other.uid:
+                result.reason = "duplicate_trial_uid"
+                return result
+            if trial.arm == other.arm and not same_model(trial, other):
+                result.reason = "mixed_identity"
+                return result
+            if trial.case_uid == other.case_uid:
+                if previous < index: earlier_case = true
+                if trial.arm == other.arm:
+                    same_arm_count = same_arm_count + 1
+                    if previous < index and (trial.repeat == other.repeat or trial.seed == other.seed):
+                        result.reason = "duplicate_repeat_or_seed"
+                        return result
+                elif trial.repeat == other.repeat and trial.seed == other.seed:
+                    if trial.context_tokens != other.context_tokens or trial.prompt_sha256 != other.prompt_sha256 or
+                        trial.wiki_sha256 != other.wiki_sha256 or trial.skill_sha256 != other.skill_sha256 or trial.tool_sha256 != other.tool_sha256:
+                        result.reason = "unmatched_experiment"
+                        return result
+                    mate_count = mate_count + 1
+            previous = previous + 1
+        if mate_count != 1 or same_arm_count != policy.repeats:
+            result.reason = "unpaired_or_missing_repeats"
+            return result
+        if not earlier_case: result.distinct_cases = result.distinct_cases + 1
+        result.tokens = result.tokens + trial.tokens
+        result.cost_micros = result.cost_micros + trial.cost_micros
+        result.elapsed_ms = result.elapsed_ms + trial.elapsed_ms
+        result.safety_failures = result.safety_failures + trial.safety_failures
+        result.regressions = result.regressions + trial.regressions
+        result.tool_calls = result.tool_calls + trial.tool_calls
+        if trial.correct_cause: result.correct_causes = result.correct_causes + 1
+        if trial.tests_passed: result.passing_tests = result.passing_tests + 1
+        if trial.peak_bytes > result.peak_bytes: result.peak_bytes = trial.peak_bytes
+        if trial.arm == "baseline":
+            result.pairs = result.pairs + 1
+            if trial.solved_at == 1: result.baseline_solve1 = result.baseline_solve1 + 1
+            if trial.solved_at > 0: result.baseline_solvek = result.baseline_solvek + 1
+        else:
+            if trial.solved_at == 1: result.candidate_solve1 = result.candidate_solve1 + 1
+            if trial.solved_at > 0: result.candidate_solvek = result.candidate_solvek + 1
+        index = index + 1
+    result.reason = "budget_exceeded"
+    if result.tokens > policy.max_tokens or result.cost_micros > policy.max_cost_micros or result.elapsed_ms > policy.max_elapsed_ms or result.peak_bytes > policy.max_peak_bytes: return result
+    result.reason = "safety_or_regression_failure"
+    if result.safety_failures > 0 or result.regressions > 0: return result
+    result.delta_ppm = (result.candidate_solvek - result.baseline_solvek) * 1000000 / result.pairs
+    # ceil(sqrt(7.378 * 10^12 / n)); 7.378 > 2 ln(40).
+    # Cases, not repeats, are the sampling units. Bound assumes independent cases;
+    # trusted promotion owner must certify independent root-cause family sampling.
+    var low = 0
+    var high = 3000000
+    val variance_bound = (7378000000000 + result.distinct_cases - 1) / result.distinct_cases
+    while low < high:
+        val middle = (low + high) / 2
+        if middle * middle >= variance_bound:
+            high = middle
+        else:
+            low = middle + 1
+    result.confidence_low_ppm = result.delta_ppm - high
+    result.confidence_high_ppm = result.delta_ppm + high
+    if result.confidence_low_ppm < -1000000: result.confidence_low_ppm = -1000000
+    if result.confidence_high_ppm > 1000000: result.confidence_high_ppm = 1000000
+    result.outcome = "PASS"
+    result.reason = "observations_not_authenticated"
+    result.escalation = "collect_more_independent_cases"
+    if result.confidence_low_ppm >= policy.minimum_delta_ppm: result.escalation = "request_owner_review"
+    result
+
+pub fn learning_check_proposal(scope: LearningScopeV1, summary: ModelLadderSummaryV1, owner: LearningOwnerV1) -> Result<ModelLadderSummaryV1, text>:
+    if not learning_scope_valid(scope): return Err("invalid_scope")
+    if not owner.authorize(scope, "learning.proposal"): return Err("unauthorized")
+    val checked = learning_summarize_trials(summary.trials, summary.policy)
+    if checked.outcome != "PASS": return Err(checked.reason)
+    for trial in checked.trials:
+        if not owner.authorize(scope, "learning.proposal"): return Err("revoked")
+        if not owner.verify_trial(trial): return Err("unauthenticated_trial")
+    if checked.policy.minimum_delta_ppm <= 0 or checked.escalation != "request_owner_review": return Err("insufficient_confidence")
+    if not owner.authorize(scope, "learning.proposal"): return Err("revoked")
+    if not owner.verify_promotion(scope, checked): return Err("owner_review_required")
+    Ok(checked)
+
+pub fn learning_admit_promotion(scope: LearningScopeV1, summary: ModelLadderSummaryV1, owner: LearningOwnerV1) -> LearningDecisionV1:
+    var checked = summary
+    match learning_check_proposal(scope, summary, owner):
+        case Ok(value): checked = value
+        case Err(reason):
+            if reason == "unauthorized" or reason == "revoked" or reason == "insufficient_confidence" or reason == "owner_review_required":
+                return learning_decision("BLOCKED", reason)
+            return learning_decision("FAIL", reason)
+    if not owner.authorize(scope, "learning.record_attempt"): return learning_decision("BLOCKED", "attempt_record_denied")
+    if not owner.record_attempt(scope, checked): return learning_decision("BLOCKED", "attempt_owner_unavailable")
+    learning_decision("PASS", "proposal_recorded_no_promotion")

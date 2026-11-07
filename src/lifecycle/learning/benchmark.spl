@@ -1,0 +1,64 @@
+use lifecycle.contracts.{lifecycle_hex, lifecycle_has_text}
+use .contracts.*
+use .claims.{learning_decision, learning_scope_valid}
+
+pub fn learning_same_case(a: BenchmarkCaseV1, b: BenchmarkCaseV1) -> bool:
+    a.uid == b.uid and a.root_cause_family == b.root_cause_family and a.repository_uid == b.repository_uid and
+        a.observed_at_ms == b.observed_at_ms and a.split == b.split and a.symptom_sha256 == b.symptom_sha256 and
+        a.answer_sha256 == b.answer_sha256 and a.clearance_sha256 == b.clearance_sha256
+
+pub fn learning_validate_partition(cases: [BenchmarkCaseV1], freeze: BenchmarkFreezeV1) -> LearningDecisionV1:
+    if not lifecycle_has_text(freeze.uid) or not lifecycle_hex(freeze.manifest_sha256, 64) or not lifecycle_hex(freeze.corpus_sha256, 64):
+        return learning_decision("FAIL", "invalid_freeze_identity")
+    if freeze.train_end_ms < 0 or freeze.dev_end_ms <= freeze.train_end_ms or freeze.held_out_end_ms <= freeze.dev_end_ms:
+        return learning_decision("FAIL", "invalid_cutoffs")
+    if cases.len() == 0 or cases.len() > 4096 or cases.len() != freeze.cases.len(): return learning_decision("FAIL", "invalid_case_count")
+    var train = 0
+    var dev = 0
+    var held = 0
+    var index = 0
+    for item in cases:
+        if not lifecycle_has_text(item.uid) or not lifecycle_has_text(item.root_cause_family) or not lifecycle_has_text(item.repository_uid):
+            return learning_decision("FAIL", "empty_case_identity")
+        if not lifecycle_hex(item.symptom_sha256, 64) or not lifecycle_hex(item.answer_sha256, 64) or not lifecycle_hex(item.clearance_sha256, 64):
+            return learning_decision("FAIL", "missing_case_evidence")
+        if not learning_same_case(item, freeze.cases[index]): return learning_decision("FAIL", "changed_frozen_case")
+        if item.observed_at_ms < 0: return learning_decision("FAIL", "invalid_observation_time")
+        if item.split == "train":
+            train = train + 1
+            if item.observed_at_ms > freeze.train_end_ms: return learning_decision("FAIL", "future_training_case")
+        elif item.split == "dev":
+            dev = dev + 1
+            if item.observed_at_ms <= freeze.train_end_ms or item.observed_at_ms > freeze.dev_end_ms: return learning_decision("FAIL", "invalid_dev_time")
+        elif item.split == "held_out":
+            held = held + 1
+            if item.observed_at_ms <= freeze.dev_end_ms or item.observed_at_ms > freeze.held_out_end_ms: return learning_decision("FAIL", "invalid_held_out_time")
+        else:
+            return learning_decision("FAIL", "unknown_partition")
+        var previous = 0
+        while previous < index:
+            val other = cases[previous]
+            if item.uid == other.uid: return learning_decision("FAIL", "duplicate_case")
+            if item.split != other.split and (item.root_cause_family == other.root_cause_family or item.repository_uid == other.repository_uid):
+                return learning_decision("FAIL", "partition_leakage")
+            if item.split != other.split and (item.symptom_sha256 == other.symptom_sha256 or item.answer_sha256 == other.answer_sha256 or
+                item.symptom_sha256 == other.answer_sha256 or item.answer_sha256 == other.symptom_sha256):
+                return learning_decision("FAIL", "content_leakage")
+            previous = previous + 1
+        index = index + 1
+    if train == 0 or dev == 0 or held == 0: return learning_decision("FAIL", "missing_partition")
+    learning_decision("PASS", "partition_valid_not_authenticated")
+
+pub fn learning_blind_case(scope: LearningScopeV1, case_uid: text, freeze: BenchmarkFreezeV1, owner: LearningOwnerV1) -> BlindedCaseV1?:
+    if not learning_scope_valid(scope) or not lifecycle_has_text(case_uid): return nil
+    if not owner.authorize(scope, "benchmark.read"): return nil
+    if learning_validate_partition(freeze.cases, freeze).outcome != "PASS": return nil
+    if not owner.authorize(scope, "benchmark.read"): return nil
+    if not owner.verify_freeze(scope, freeze): return nil
+    if not owner.authorize(scope, "benchmark.read"): return nil
+    if val item = owner.benchmark_case(scope, case_uid, freeze):
+        for frozen in freeze.cases:
+            if frozen.uid == case_uid and frozen.split == "held_out" and learning_same_case(item, frozen):
+                if not owner.authorize(scope, "benchmark.read"): return nil
+                return BlindedCaseV1(uid: item.uid, symptom_sha256: item.symptom_sha256)
+    nil

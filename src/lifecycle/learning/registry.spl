@@ -1,0 +1,111 @@
+"""Canonical existing-registry projection, not a grant or a filesystem writer."""
+use std.common.sdn.value.{SdnValue}
+use std.common.sdn.encode.{sdn_encode_canonical, sdn_encoded_text_size_v1}
+use .contracts.*
+use .claims.{learning_scope_valid}
+use .ladder.{learning_summarize_trials}
+use lifecycle.contracts.{lifecycle_hex}
+
+pub struct LearningEvalProposalV1:
+    attempt_id: text
+    eval_command: text
+    metrics: text
+    target: text
+    result: text
+    proposal_sdn: text
+    eval_entry_sdn: text
+    attempt_source_path: text
+    attempt_source_sha256: text
+
+fn proposal_trial(t: ModelTrialV1) -> SdnValue:
+    val fields: Dict<text, SdnValue> = {
+        "uid": SdnValue.String(t.uid), "attempt_uid": SdnValue.String(t.attempt_uid),
+        "cohort_sha256": SdnValue.String(t.cohort_sha256), "case_uid": SdnValue.String(t.case_uid),
+        "seed": SdnValue.Int(t.seed), "repeat": SdnValue.Int(t.repeat), "arm": SdnValue.String(t.arm),
+        "model": SdnValue.String(t.model), "revision": SdnValue.String(t.revision),
+        "quantization": SdnValue.String(t.quantization), "context_tokens": SdnValue.Int(t.context_tokens),
+        "prompt_sha256": SdnValue.String(t.prompt_sha256), "wiki_sha256": SdnValue.String(t.wiki_sha256),
+        "skill_sha256": SdnValue.String(t.skill_sha256), "tool_sha256": SdnValue.String(t.tool_sha256),
+        "solved_at": SdnValue.Int(t.solved_at), "correct_cause": SdnValue.Bool(t.correct_cause),
+        "tests_passed": SdnValue.Bool(t.tests_passed), "regressions": SdnValue.Int(t.regressions),
+        "tool_calls": SdnValue.Int(t.tool_calls), "safety_failures": SdnValue.Int(t.safety_failures),
+        "tokens": SdnValue.Int(t.tokens), "cost_micros": SdnValue.Int(t.cost_micros),
+        "elapsed_ms": SdnValue.Int(t.elapsed_ms), "peak_bytes": SdnValue.Int(t.peak_bytes),
+        "receipt_sha256": SdnValue.String(t.receipt_sha256)}
+    SdnValue.Dict(fields)
+
+fn proposal_policy(p: ModelLadderPolicyV1) -> SdnValue:
+    val fields: Dict<text, SdnValue> = {
+        "attempt_uid": SdnValue.String(p.attempt_uid), "cohort_sha256": SdnValue.String(p.cohort_sha256),
+        "repeats": SdnValue.Int(p.repeats), "solve_k": SdnValue.Int(p.solve_k),
+        "max_tokens": SdnValue.Int(p.max_tokens), "max_cost_micros": SdnValue.Int(p.max_cost_micros),
+        "max_elapsed_ms": SdnValue.Int(p.max_elapsed_ms), "max_peak_bytes": SdnValue.Int(p.max_peak_bytes),
+        "minimum_delta_ppm": SdnValue.Int(p.minimum_delta_ppm)}
+    SdnValue.Dict(fields)
+
+fn proposal_metrics(s: ModelLadderSummaryV1) -> SdnValue:
+    val fields: Dict<text, SdnValue> = {
+        "pairs": SdnValue.Int(s.pairs), "distinct_cases": SdnValue.Int(s.distinct_cases),
+        "baseline_solve1": SdnValue.Int(s.baseline_solve1), "candidate_solve1": SdnValue.Int(s.candidate_solve1),
+        "baseline_solvek": SdnValue.Int(s.baseline_solvek), "candidate_solvek": SdnValue.Int(s.candidate_solvek),
+        "safety_failures": SdnValue.Int(s.safety_failures), "correct_causes": SdnValue.Int(s.correct_causes),
+        "passing_tests": SdnValue.Int(s.passing_tests), "regressions": SdnValue.Int(s.regressions),
+        "tool_calls": SdnValue.Int(s.tool_calls), "tokens": SdnValue.Int(s.tokens),
+        "cost_micros": SdnValue.Int(s.cost_micros), "elapsed_ms": SdnValue.Int(s.elapsed_ms),
+        "peak_bytes": SdnValue.Int(s.peak_bytes), "delta_ppm": SdnValue.Int(s.delta_ppm),
+        "confidence_low_ppm": SdnValue.Int(s.confidence_low_ppm), "confidence_high_ppm": SdnValue.Int(s.confidence_high_ppm),
+        "escalation": SdnValue.String(s.escalation)}
+    SdnValue.Dict(fields)
+
+# Pure serialization: use learning_prepare_eval_proposal / persistence with
+# trusted owners for admission. Returned text is never authenticated evidence.
+pub fn learning_encode_eval_proposal(scope: LearningScopeV1, summary: ModelLadderSummaryV1, attempt_source_sha256: text) -> Result<LearningEvalProposalV1, text>:
+    if not learning_scope_valid(scope): return Err("invalid_scope")
+    if not lifecycle_hex(attempt_source_sha256, 64): return Err("invalid_attempt_source_digest")
+    val checked = learning_summarize_trials(summary.trials, summary.policy)
+    if checked.outcome != "PASS": return Err(checked.reason)
+    # Match existing CLI attempt namespace, including rejecting path components.
+    val attempt = checked.policy.attempt_uid
+    if attempt.len() > 251: return Err("invalid_attempt_id")
+    if attempt == "." or attempt == "..": return Err("invalid_attempt_id")
+    var index = 0
+    while index < attempt.len():
+        val ch = attempt.byte_at(index)
+        if not ((ch >= 65 and ch <= 90) or (ch >= 97 and ch <= 122) or (ch >= 48 and ch <= 57) or ch == 95 or ch == 46 or ch == 45):
+            return Err("invalid_attempt_id")
+        index = index + 1
+    val attempt_source_path = ".spipe/llm-finetune-process/attempts/" + attempt + ".sdn"
+    # Conservative upper bound BEFORE constructing the potentially large SDN
+    # tree/string. Fixed overhead covers keys, numbers and punctuation per row.
+    var estimated_bytes = 16384 + sdn_encoded_text_size_v1(scope.scope_uid) +
+        sdn_encoded_text_size_v1(attempt_source_path)
+    for trial in checked.trials:
+        estimated_bytes = estimated_bytes + 2048
+        val texts = [trial.uid, trial.attempt_uid, trial.cohort_sha256, trial.case_uid, trial.arm,
+            trial.model, trial.revision, trial.quantization, trial.prompt_sha256, trial.wiki_sha256,
+            trial.skill_sha256, trial.tool_sha256, trial.receipt_sha256]
+        for content in texts: estimated_bytes = estimated_bytes + sdn_encoded_text_size_v1(content)
+        if estimated_bytes > 1048576: return Err("proposal_byte_budget_exceeded")
+    var trials: [SdnValue] = []
+    for trial in checked.trials: trials.push(proposal_trial(trial))
+    val scope_fields: Dict<text, SdnValue> = {"scope_uid": SdnValue.String(scope.scope_uid),
+        "source_revision": SdnValue.String(scope.source_revision), "policy_sha256": SdnValue.String(scope.policy_sha256)}
+    val fields: Dict<text, SdnValue> = {
+        "schema": SdnValue.String("spipe-learning-eval-proposal/1"),
+        "status": SdnValue.String("proposal_pending_review"), "authenticated": SdnValue.Bool(false),
+        "attempt_source_path": SdnValue.String(attempt_source_path), "attempt_source_sha256": SdnValue.String(attempt_source_sha256),
+        "scope": SdnValue.Dict(scope_fields), "policy": proposal_policy(checked.policy),
+        "trials": SdnValue.Array(trials), "metrics": proposal_metrics(checked)}
+    val proposal = sdn_encode_canonical(SdnValue.Dict(fields))
+    if proposal.len() > 1048576: return Err("proposal_byte_budget_exceeded")
+    val command = "learning.model_ladder/1"
+    val target = "proposal_only_no_promotion"
+    val result = "proposal_pending_review"
+    # Existing commandFineTuneRecordEval takes these five text fields. metrics
+    # contains the COMPLETE canonical proposal, not an unauthenticated summary.
+    val entry: Dict<text, SdnValue> = {"attempt_id": SdnValue.String(attempt),
+        "eval_command": SdnValue.String(command), "metrics": SdnValue.String(proposal),
+        "target": SdnValue.String(target), "result": SdnValue.String(result)}
+    Ok(LearningEvalProposalV1(attempt_id: attempt, eval_command: command, metrics: proposal,
+        target: target, result: result, proposal_sdn: proposal, eval_entry_sdn: sdn_encode_canonical(SdnValue.Dict(entry)),
+        attempt_source_path: attempt_source_path, attempt_source_sha256: attempt_source_sha256))

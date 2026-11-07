@@ -1,0 +1,30 @@
+"""Immutable proposal publication through the shared admitted Git owner."""
+use lifecycle.workflow.git_artifact.{GitArtifactOwnerV1, GitArtifactWriteV1, GitArtifactReceiptV1}
+use lifecycle.contracts.{lifecycle_has_text}
+use .contracts.*
+use .registry.{LearningEvalProposalV1, learning_encode_eval_proposal}
+use .ladder.{learning_check_proposal}
+
+# This pure preparation boundary makes no filesystem or registry writes. A
+# trusted owner authenticates existing attempt bytes BEFORE Git persistence.
+pub fn learning_prepare_eval_proposal(scope: LearningScopeV1, summary: ModelLadderSummaryV1,
+    attempt_source_sha256: text, knowledge: LearningOwnerV1) -> Result<LearningEvalProposalV1, text>:
+    val checked = learning_check_proposal(scope, summary, knowledge)?
+    val proposal = learning_encode_eval_proposal(scope, checked, attempt_source_sha256)?
+    if not knowledge.authorize(scope, "learning.proposal"): return Err("revoked")
+    if not knowledge.verify_attempt_binding(scope, checked.policy.attempt_uid, proposal.attempt_source_path, proposal.attempt_source_sha256):
+        return Err("unverified_attempt_source")
+    Ok(proposal)
+
+# git_owner is a concrete owner from the trusted host factory. A deserialized
+# request cannot construct an admitted process/environment/root capability.
+pub fn learning_persist_eval_proposal(scope: LearningScopeV1, proposal_uid: text,
+    summary: ModelLadderSummaryV1, attempt_source_sha256: text, knowledge: LearningOwnerV1,
+    mut git_owner: GitArtifactOwnerV1) -> Result<GitArtifactReceiptV1, text>:
+    if not knowledge.authorize(scope, "learning.proposal"): return Err("unauthorized")
+    if not lifecycle_has_text(proposal_uid): return Err("invalid_proposal_uid")
+    val proposal = learning_prepare_eval_proposal(scope, summary, attempt_source_sha256, knowledge)?
+    if not knowledge.authorize(scope, "learning.proposal"): return Err("revoked")
+    git_owner.commit_artifact(GitArtifactWriteV1(artifact_kind: "evaluation_proposal", artifact_key: proposal_uid,
+        canonical_sdn: proposal.proposal_sdn, source_revision: scope.source_revision, policy_sha256: scope.policy_sha256,
+        authority_scope: scope.scope_uid, expected_commit_oid: ""))

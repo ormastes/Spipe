@@ -1,0 +1,322 @@
+"""Local Git commit/tree CAS owner over retained host process pins.
+
+Candidate source: platform durability and process execution need admission and
+runtime evidence. No path, executable, environment or ref comes from writes.
+"""
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_revision, lifecycle_hex}
+use lifecycle.workflow.bundle.{workflow_canonical_sdn, workflow_git_oid}
+use lifecycle.workflow.bundle_values.{workflow_sdn_object, workflow_sdn_text}
+use std.common.sdn.value.{SdnValue}
+use std.common.sdn.encode.{sdn_encode_canonical}
+use std.common.crypto.sha256.{sha256_u8_hex}
+use std.common.text_bytes.{text_to_utf8_bytes, bytes_to_text}
+use std.nogc_sync_mut.io.process_inspection_v1.*
+use std.common.process.observation_v4.{ProcessObservationDescendantPolicyV4}
+use std.common.process.observation_v4.{process_observation_monitor_group_gap_v4}
+use std.nogc_sync_mut.io.process_ops.{process_observation_owner_capabilities_v4}
+
+pub struct GitArtifactWriteV1:
+    artifact_kind: text
+    artifact_key: text
+    canonical_sdn: text
+    source_revision: text
+    policy_sha256: text
+    authority_scope: text
+    expected_commit_oid: text
+
+pub struct GitArtifactReceiptV1:
+    commit_oid: text
+    blob_oid: text
+    payload_sha256: text
+    previous_commit_oid: text
+    ref_name: text
+
+pub struct GitArtifactSnapshotV1:
+    receipt: GitArtifactReceiptV1
+    canonical_sdn: text
+
+pub struct GitArtifactAdmissionV1:
+    executable: OwnedExecutablePin
+    cwd: OwnedCwdPinV4
+    request: ProcessObservationRequestV4
+    authority_scope: text
+    artifact_kind: text
+    artifact_key: text
+    source_revision: text
+    policy_sha256: text
+    disabled_hooks_path: text
+    max_polls: i64
+    poll_wait_ns: i64
+
+# admit authenticates complete retained executable/repository identities, exact
+# environment, platform/storage/fsync capability and budgets. Not a request bit.
+# It must reject ambient Git configuration/helper/alternate-object escape routes,
+# replace objects, unexpected repository extensions and unsupported durability.
+pub trait GitArtifactHostAuthorityV1:
+    fn admit(self, admission: GitArtifactAdmissionV1) -> bool
+    fn authorize_read(self, admission: GitArtifactAdmissionV1, artifact_kind: text, artifact_key: text) -> bool
+    fn authorize_write(self, admission: GitArtifactAdmissionV1, write: GitArtifactWriteV1) -> bool
+
+fn git_artifact_digest(source: text) -> text:
+    sha256_u8_hex(text_to_utf8_bytes(source))
+
+fn git_artifact_digest_bytes(source: text) -> [u8]:
+    val hex = git_artifact_digest(source)
+    var bytes: [u8] = []
+    var index = 0
+    while index < 64:
+        var value = 0
+        for offset in [0, 1]:
+            val digit = hex.byte_at(index + offset)
+            var number = digit - 48
+            if digit >= 97: number = digit - 87
+            value = value * 16 + number
+        bytes.push(value as u8)
+        index = index + 2
+    bytes
+
+pub fn git_artifact_ref(kind: text, scope: text, key: text) -> text:
+    val identity = SdnValue.Array([SdnValue.String(kind), SdnValue.String(scope), SdnValue.String(key)])
+    "refs/spipe/lifecycle/" + git_artifact_digest(sdn_encode_canonical(identity))
+
+fn git_artifact_admission_valid(admission: GitArtifactAdmissionV1) -> bool:
+    ["lifecycle_run", "evaluation_proposal"].contains(admission.artifact_kind) and
+        lifecycle_has_text(admission.authority_scope) and lifecycle_has_text(admission.artifact_key) and
+        lifecycle_revision(admission.source_revision) and lifecycle_hex(admission.policy_sha256, 64) and
+        lifecycle_has_text(admission.disabled_hooks_path) and admission.max_polls > 0 and admission.max_polls <= 128 and
+        admission.poll_wait_ns > 0 and admission.poll_wait_ns <= 1000000000 and
+        admission.request.wall_budget_ns > 0 and admission.request.wall_budget_ns <= 30000000000 and
+        admission.request.cleanup_budget_ns > 0 and admission.request.cleanup_budget_ns <= 30000000000 and
+        admission.request.stdout_limit_bytes > 0 and admission.request.stdout_limit_bytes <= 2097152 and
+        admission.request.stderr_limit_bytes > 0 and admission.request.stderr_limit_bytes <= 65536 and
+        admission.max_polls * admission.poll_wait_ns >= admission.request.wall_budget_ns + admission.request.cleanup_budget_ns and
+        admission.request.descendant_policy == ProcessObservationDescendantPolicyV4.ProcessGroup
+
+fn git_artifact_capabilities(admission: GitArtifactAdmissionV1) -> Result<bool, text>:
+    val caps = process_observation_owner_capabilities_v4()?
+    if not caps.available or caps.runtime_error != 0 or process_observation_monitor_group_gap_v4(caps.capability_bits) != "":
+        return Err("workflow_git_provider_unavailable")
+    if admission.poll_wait_ns > caps.max_caller_wait_ns or admission.request.stdout_limit_bytes > caps.max_capture_bytes or
+        admission.request.stderr_limit_bytes > caps.max_capture_bytes: return Err("workflow_git_provider_limits")
+    Ok(true)
+
+pub fn git_artifact_owner(admission: GitArtifactAdmissionV1,
+    authority: GitArtifactHostAuthorityV1) -> Result<GitArtifactOwnerV1, text>:
+    if not authority.admit(admission): return Err("workflow_git_admission_denied")
+    if not git_artifact_admission_valid(admission): return Err("workflow_git_invalid_admission")
+    git_artifact_capabilities(admission)?
+    Ok(GitArtifactOwnerV1(admission: admission, authority: authority))
+
+fn git_artifact_output_oid(source: text) -> Result<text, text>:
+    # Git plumbing prints exactly one hexadecimal ID and a single newline.
+    if not source.ends_with("\n"): return Err("workflow_git_invalid_oid")
+    val oid = source.substring(0, source.len() - 1)
+    if not workflow_git_oid(oid): return Err("workflow_git_invalid_oid")
+    Ok(oid)
+
+fn git_artifact_envelope(write: GitArtifactWriteV1) -> Result<text, text>:
+    val payload = workflow_canonical_sdn(write.canonical_sdn)?
+    var fields: Dict<text, SdnValue> = {}
+    fields["schema"] = SdnValue.String("spipe-git-artifact/1")
+    fields["artifact_kind"] = SdnValue.String(write.artifact_kind)
+    fields["artifact_key"] = SdnValue.String(write.artifact_key)
+    fields["authority_scope"] = SdnValue.String(write.authority_scope)
+    fields["source_revision"] = SdnValue.String(write.source_revision)
+    fields["policy_sha256"] = SdnValue.String(write.policy_sha256)
+    fields["previous_commit_oid"] = SdnValue.String(write.expected_commit_oid)
+    fields["payload_sha256"] = SdnValue.String(git_artifact_digest(write.canonical_sdn))
+    fields["payload"] = payload
+    val encoded = sdn_encode_canonical(SdnValue.Dict(fields))
+    if encoded.len() > 1048576: return Err("workflow_bundle_quota")
+    # Complete nesting must parse before mutation; host tables only round-trip
+    # at top level. The strict parser remains the sole grammar owner.
+    workflow_canonical_sdn(encoded)?
+    Ok(encoded)
+
+pub class GitArtifactOwnerV1:
+    admission: GitArtifactAdmissionV1
+    authority: GitArtifactHostAuthorityV1
+    pending: ProcessInspectionLeaseV1? = nil
+
+    # One retained pending lease survives cleanup uncertainty. New operations
+    # reject until explicit recover_cleanup completes two-phase acknowledgement.
+    pub me recover_cleanup() -> Result<bool, text>:
+        if self.pending == nil: return Ok(true)
+        var lease = self.pending.unwrap()
+        var polls = 0
+        while polls < self.admission.max_polls:
+            match lease.acknowledge_current():
+                case Ok(ack):
+                    self.pending = nil
+                    return Ok(true)
+                case Err(reason):
+                    self.pending = Some(lease)
+            match lease.cancel(self.admission.poll_wait_ns):
+                case Ok(cancelled): self.pending = Some(lease)
+                case Err(reason): self.pending = Some(lease)
+            polls = polls + 1
+        match lease.acknowledge_current():
+            case Ok(ack):
+                self.pending = nil
+                Ok(true)
+            case Err(reason):
+                self.pending = Some(lease)
+                Err("workflow_git_cleanup_pending:" + reason)
+
+    me run(argv: [text], input: text, mutation: bool) -> Result<text, text>:
+        if self.pending != nil: return Err("workflow_git_cleanup_pending")
+        val admission = self.admission
+        if not self.authority.admit(admission) or not git_artifact_admission_valid(admission): return Err("workflow_git_admission_denied")
+        git_artifact_capabilities(admission)?
+        if input.len() > 1048576: return Err("workflow_bundle_quota")
+        var request = admission.request
+        request.argv = ["git", "--git-dir=.", "--no-replace-objects", "-c", "core.fsync=all", "-c", "core.fsyncMethod=fsync",
+            "-c", "core.hooksPath=" + admission.disabled_hooks_path, "-c", "commit.gpgSign=false"] + argv
+        val start = process_inspection_start_pinned_v1(admission.executable, admission.cwd,
+            request, text_to_utf8_bytes(input), git_artifact_digest_bytes(input))
+        val started = match start:
+            case Ok(value): value
+            case Err(reason):
+                if mutation: return Err("workflow_store_uncertain:" + reason)
+                return Err("workflow_git_start_failed:" + reason)
+        var lease = started.lease
+        self.pending = Some(lease)
+        var polls = 0
+        while polls < admission.max_polls:
+            val captured = lease.terminal_capture(admission.poll_wait_ns)
+            self.pending = Some(lease)
+            match captured:
+                case Ok(capture):
+                    if val frozen = capture:
+                        val output = bytes_to_text(frozen.stdout)
+                        val clean_stderr = frozen.stderr.len() == 0
+                        val acknowledged = lease.acknowledge_current()
+                        self.pending = Some(lease)
+                        match acknowledged:
+                            case Ok(ack):
+                                self.pending = nil
+                                if not clean_stderr:
+                                    if mutation: return Err("workflow_store_uncertain")
+                                    return Err("workflow_git_stderr")
+                                return Ok(output)
+                            case Err(reason):
+                                if mutation: return Err("workflow_store_uncertain:" + reason)
+                                return Err("workflow_git_cleanup_pending:" + reason)
+                case Err(reason):
+                    val cleanup = self.recover_cleanup()
+                    match cleanup:
+                        case Ok(done):
+                            if mutation: return Err("workflow_store_uncertain:" + reason)
+                            return Err("workflow_git_capture_failed:" + reason)
+                        case Err(pending):
+                            if mutation: return Err("workflow_store_uncertain:" + pending)
+                            return Err(pending)
+            polls = polls + 1
+        match self.recover_cleanup():
+            case Ok(done):
+                if mutation: return Err("workflow_store_uncertain")
+                Err("workflow_git_deadline")
+            case Err(reason):
+                if mutation: return Err("workflow_store_uncertain:" + reason)
+                Err(reason)
+
+    fn matches(artifact_kind: text, artifact_key: text) -> bool:
+        artifact_kind == self.admission.artifact_kind and artifact_key == self.admission.artifact_key
+
+    me pointer() -> Result<text, text>:
+        val ref_name = git_artifact_ref(self.admission.artifact_kind, self.admission.authority_scope, self.admission.artifact_key)
+        val output = self.run(
+            ["for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)", "--", ref_name], "", false)?
+        if output == "": return Err("workflow_artifact_missing")
+        if not output.ends_with("\n"): return Err("workflow_git_invalid_ref")
+        val fields = output.substring(0, output.len() - 1).split("\0")
+        if fields.len() != 3 or fields[0] != ref_name or fields[2] != "" or not workflow_git_oid(fields[1]):
+            return Err("workflow_git_invalid_ref")
+        Ok(fields[1])
+
+    pub me read_artifact(artifact_kind: text, artifact_key: text) -> Result<GitArtifactSnapshotV1, text>:
+        if not self.authority.authorize_read(self.admission, artifact_kind, artifact_key): return Err("workflow_unauthorized")
+        if not self.matches(artifact_kind, artifact_key): return Err("workflow_context_mismatch")
+        val oid = self.pointer()?
+        self.read_artifact_version(artifact_kind, artifact_key, oid)
+
+    pub me read_artifact_history(artifact_kind: text, artifact_key: text,
+        max_depth: i64) -> Result<[GitArtifactSnapshotV1], text>:
+        if not self.authority.authorize_read(self.admission, artifact_kind, artifact_key): return Err("workflow_unauthorized")
+        if not self.matches(artifact_kind, artifact_key): return Err("workflow_context_mismatch")
+        if max_depth < 1 or max_depth > 128: return Err("workflow_history_quota")
+        var snapshot = self.read_artifact(artifact_kind, artifact_key)?
+        var history: [GitArtifactSnapshotV1] = []
+        while true:
+            if history.len() >= max_depth: return Err("workflow_history_quota")
+            history.push(snapshot)
+            if snapshot.receipt.previous_commit_oid == "": return Ok(history)
+            snapshot = self.read_artifact_version(artifact_kind, artifact_key, snapshot.receipt.previous_commit_oid)?
+
+    me read_artifact_version(artifact_kind: text, artifact_key: text, oid: text) -> Result<GitArtifactSnapshotV1, text>:
+        if not self.authority.authorize_read(self.admission, artifact_kind, artifact_key): return Err("workflow_unauthorized")
+        if not self.matches(artifact_kind, artifact_key): return Err("workflow_context_mismatch")
+        if not workflow_git_oid(oid): return Err("workflow_git_invalid_oid")
+        val names = self.run( ["ls-tree", "--name-only", oid], "", false)?
+        if names != "bundle.sdn\n": return Err("workflow_git_tree_mismatch")
+        val blob = git_artifact_output_oid(self.run(
+            ["rev-parse", "--verify", oid + ":bundle.sdn"], "", false)?)?
+        val source = self.run( ["cat-file", "blob", blob], "", false)?
+        val value = workflow_canonical_sdn(source)?
+        val fields = workflow_sdn_object(value, ["schema", "artifact_kind", "artifact_key", "authority_scope",
+            "source_revision", "policy_sha256", "previous_commit_oid", "payload_sha256", "payload"])?
+        if workflow_sdn_text(fields["schema"])? != "spipe-git-artifact/1": return Err("workflow_bundle_schema")
+        if workflow_sdn_text(fields["artifact_kind"])? != artifact_kind or workflow_sdn_text(fields["artifact_key"])? != artifact_key or
+            workflow_sdn_text(fields["authority_scope"])? != self.admission.authority_scope or
+            workflow_sdn_text(fields["source_revision"])? != self.admission.source_revision or
+            workflow_sdn_text(fields["policy_sha256"])? != self.admission.policy_sha256:
+            return Err("workflow_context_mismatch")
+        val previous = workflow_sdn_text(fields["previous_commit_oid"])?
+        if previous != "" and not workflow_git_oid(previous): return Err("workflow_git_invalid_oid")
+        # Verify actual parent identity rather than trusting predecessor text.
+        val parents = self.run(
+            ["rev-list", "--parents", "--no-walk", oid], "", false)?
+        var expected_parents = oid + "\n"
+        if previous != "": expected_parents = oid + " " + previous + "\n"
+        if parents != expected_parents: return Err("workflow_git_history_mismatch")
+        val payload = sdn_encode_canonical(fields["payload"])
+        val digest = git_artifact_digest(payload)
+        if workflow_sdn_text(fields["payload_sha256"])? != digest: return Err("workflow_git_payload_mismatch")
+        Ok(GitArtifactSnapshotV1(canonical_sdn: payload, receipt: GitArtifactReceiptV1(commit_oid: oid,
+            blob_oid: blob, payload_sha256: digest, previous_commit_oid: previous,
+            ref_name: git_artifact_ref(artifact_kind, self.admission.authority_scope, artifact_key))))
+
+    pub me commit_artifact(write: GitArtifactWriteV1) -> Result<GitArtifactReceiptV1, text>:
+        if not self.authority.authorize_write(self.admission, write): return Err("workflow_unauthorized")
+        if not self.matches(write.artifact_kind, write.artifact_key) or write.authority_scope != self.admission.authority_scope or
+            write.source_revision != self.admission.source_revision or write.policy_sha256 != self.admission.policy_sha256:
+            return Err("workflow_context_mismatch")
+        if write.expected_commit_oid != "" and not workflow_git_oid(write.expected_commit_oid): return Err("workflow_git_invalid_oid")
+        val envelope = git_artifact_envelope(write)?
+        match self.read_artifact(write.artifact_kind, write.artifact_key):
+            case Ok(current):
+                if write.expected_commit_oid == "" or current.receipt.commit_oid != write.expected_commit_oid: return Err("workflow_store_conflict")
+            case Err(reason):
+                if reason != "workflow_artifact_missing" or write.expected_commit_oid != "": return Err(reason)
+        val blob = git_artifact_output_oid(self.run( ["hash-object", "-w", "--stdin"], envelope, true)?)?
+        val tree_input = "100644 blob " + blob + "\tbundle.sdn\n"
+        val tree = git_artifact_output_oid(self.run( ["mktree"], tree_input, true)?)?
+        var commit_args = ["commit-tree", tree]
+        if write.expected_commit_oid != "": commit_args = commit_args + ["-p", write.expected_commit_oid]
+        val commit_oid = git_artifact_output_oid(self.run(
+            commit_args, "SPipe immutable artifact transaction\n", true)?)?
+        val ref_name = git_artifact_ref(write.artifact_kind, write.authority_scope, write.artifact_key)
+        # Zero means create-only in either repository object format.
+        var expected = write.expected_commit_oid
+        if expected == "":
+            expected = "0000000000000000000000000000000000000000"
+            if commit_oid.len() == 64: expected = expected + "000000000000000000000000"
+        match self.run(
+            ["update-ref", "--no-deref", ref_name, commit_oid, expected], "", true):
+            case Ok(output):
+                if output != "": return Err("workflow_store_uncertain:" + ref_name + ":" + commit_oid + ":" + expected)
+            case Err(reason): return Err("workflow_store_uncertain:" + ref_name + ":" + commit_oid + ":" + expected + ":" + reason)
+        # Exact CAS success with complete acknowledgement. Lost acknowledgement
+        # returned uncertain above and must be reconciled, never retried blindly.
+        Ok(GitArtifactReceiptV1(commit_oid: commit_oid, blob_oid: blob,
+            payload_sha256: git_artifact_digest(write.canonical_sdn), previous_commit_oid: write.expected_commit_oid, ref_name: ref_name))

@@ -1,0 +1,70 @@
+# @req REQ-007 REQ-008
+# @cover src/lifecycle/learning/ladder.spl
+use std.spec.*
+use lifecycle.learning.ladder.*
+use .lifecycle_learning_fixtures.*
+
+describe "Repeated model observations and proposal admission":
+    it "counts paired repeats without treating repeats as independent incidents":
+        step("Compare repeated model trials")
+        val summary = learning_summarize_trials(fixture_learning_trials(), fixture_learning_policy())
+        expect(summary.outcome).to_equal("PASS")
+        expect(summary.pairs).to_equal(2)
+        expect(summary.distinct_cases).to_equal(1)
+        expect(summary.tokens).to_equal(40)
+        expect(summary.tool_calls).to_equal(8)
+        expect(summary.confidence_low_ppm).to_equal(-1000000)
+        expect(summary.escalation).to_equal("collect_more_independent_cases")
+
+    it "rejects duplicate repeats missing pairs and mixed model identity":
+        var trials = fixture_learning_trials()
+        trials[1].repeat = 0
+        expect(learning_summarize_trials(trials, fixture_learning_policy()).reason).to_equal("duplicate_repeat_or_seed")
+        expect(learning_summarize_trials([fixture_learning_trial()], fixture_learning_policy()).reason).to_equal("unpaired_or_missing_repeats")
+        trials = fixture_learning_trials()
+        trials[1].wiki_sha256 = trials[1].receipt_sha256
+        expect(learning_summarize_trials(trials, fixture_learning_policy()).reason).to_equal("mixed_identity")
+
+    it "rejects budget safety and regression violations":
+        var policy = fixture_learning_policy()
+        policy.max_tokens = 1
+        expect(learning_summarize_trials(fixture_learning_trials(), policy).reason).to_equal("budget_exceeded")
+        var trials = fixture_learning_trials()
+        trials[0].safety_failures = 1
+        expect(learning_summarize_trials(trials, fixture_learning_policy()).reason).to_equal("safety_or_regression_failure")
+
+    it "does not trust forged aggregate confidence or outcome":
+        step("Require owner promotion approval")
+        var summary = learning_summarize_trials(fixture_learning_trials(), fixture_learning_policy())
+        summary.outcome = "PASS"
+        summary.confidence_low_ppm = 1000000
+        summary.escalation = "request_owner_review"
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, fixture_learning_owner()).reason).to_equal("insufficient_confidence")
+
+    it "authenticates every trial and denies before any owner read":
+        val summary = learning_summarize_trials(fixture_learning_trials(), fixture_learning_policy())
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, FixtureLearningOwnerV1(trials_verified: false)).reason).to_equal("unauthenticated_trial")
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, FixtureLearningOwnerV1(allowed: false)).reason).to_equal("unauthorized")
+
+    it "records only a checked proposal and ignores forged submitted metrics":
+        var summary = learning_summarize_trials(fixture_learning_promotion_trials(), fixture_learning_policy())
+        expect(summary.distinct_cases).to_equal(8)
+        expect(summary.confidence_low_ppm).to_be_greater_than(0)
+        summary.tokens = 0
+        summary.reason = "forged"
+        val owner = FixtureLearningOwnerV1(promotion_verified: true, record_verified: true)
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, owner).reason).to_equal("proposal_recorded_no_promotion")
+
+    it "blocks unchecked review attempt authorization and unavailable registry":
+        val summary = learning_summarize_trials(fixture_learning_promotion_trials(), fixture_learning_policy())
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, fixture_learning_owner()).reason).to_equal("owner_review_required")
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, FixtureLearningOwnerV1(promotion_verified: true, record_authorized: false)).reason).to_equal("attempt_record_denied")
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, FixtureLearningOwnerV1(promotion_verified: true)).reason).to_equal("attempt_owner_unavailable")
+
+    it "rejects cross-arm experiment changes and forged complete trial sets":
+        var trials = fixture_learning_trials()
+        trials[2].prompt_sha256 = trials[2].receipt_sha256
+        trials[3].prompt_sha256 = trials[3].receipt_sha256
+        expect(learning_summarize_trials(trials, fixture_learning_policy()).reason).to_equal("unmatched_experiment")
+        val summary = learning_summarize_trials(fixture_learning_promotion_trials(), fixture_learning_policy())
+        expect(learning_admit_promotion(fixture_learning_scope(), summary, FixtureLearningOwnerV1(trials_verified: false, promotion_verified: true, record_verified: true)).reason).to_equal("unauthenticated_trial")
