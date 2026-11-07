@@ -1,0 +1,9 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-lifecycle-run/1
+fields:
+  schema: text
+  run_id: text
+  source_revision: revision
+  policy_sha256: sha256
+  state: "enum:proposed|investigating|defined|designed|test_ready|implementing|verifying|releasable|released|observing|closed|blocked|rework|abandoned|rolled_back"
+  generation: nonnegative

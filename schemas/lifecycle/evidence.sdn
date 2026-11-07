@@ -1,0 +1,21 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-lifecycle-evidence/1
+fields:
+  schema: text
+  run_id: text
+  run_generation: nonnegative
+  gate_id: text
+  source_revision: revision
+  policy_sha256: sha256
+  executable_sha256: sha256
+  selector: text
+  inputs_sha256: sha256
+  evidence_sha256: sha256
+  outcome: "enum:pass|red|fail|not_run|not_applicable"
+  executed_cases: nonnegative
+  failed_cases: nonnegative
+  negative_cases: nonnegative
+  negative_failed_cases: nonnegative
+  rationale: optional_text
+  issued_at_ms: nonnegative
+  expires_at_ms: nonnegative

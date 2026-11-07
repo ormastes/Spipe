@@ -1,0 +1,134 @@
+"""Bounded read-only inventory analysis behind authorization-first owner ports.
+
+The adapter reuses existing Markdown/AST link extraction and retained filesystem
+owners. No shell walk, private-scope inference or second Markdown parser lives
+here. An absent authorized snapshot is not a successful empty inventory.
+"""
+
+use .contracts.{lifecycle_has_text, lifecycle_revision, lifecycle_hex}
+use std.common.crypto.sha256.{sha256_u8_hex}
+
+pub struct LifecycleInventoryFileV1:
+    path: text
+    route_id: text
+    # Only whole-file byte-exact projections belong here. Managed blocks use
+    # the existing generator's checks, not whole-document equality.
+    canonical_source: text
+    content: text
+    content_sha256: text
+    # Checked normalized relative file targets, excluding fragments/external
+    # URLs and code spans, supplied by the existing Markdown link owner.
+    link_targets: [text]
+
+pub struct LifecycleInventorySnapshotV1:
+    schema: text
+    scope_id: text
+    source_revision: text
+    complete: bool
+    files: [LifecycleInventoryFileV1]
+
+pub struct LifecycleDoctorFindingV1:
+    code: text
+    severity: text
+    path: text
+    related: text
+
+pub struct LifecycleDoctorReportV1:
+    status: text
+    scope_id: text
+    source_revision: text
+    files_checked: i64
+    bytes_checked: i64
+    findings: [LifecycleDoctorFindingV1]
+
+pub trait LifecycleInventoryPortV1:
+    fn authorize_scope(self, scope_id: text) -> bool
+    fn snapshot(self, scope_id: text, maximum_files: i64, maximum_bytes: i64) -> Result<LifecycleInventorySnapshotV1, text>
+
+fn lifecycle_relative_path(path: text) -> bool:
+    if not lifecycle_has_text(path) or path.starts_with("/") or path.contains("\\") or path.contains(":"):
+        return false
+    for byte in path.bytes():
+        if byte < 32 or byte == 127: return false
+    for part in path.split("/"):
+        if part == "" or part == "." or part == "..": return false
+    true
+
+fn lifecycle_doctor_finding(code: text, severity: text, path: text, related: text) -> LifecycleDoctorFindingV1:
+    LifecycleDoctorFindingV1(code: code, severity: severity, path: path, related: related)
+
+pub fn inspect_lifecycle_inventory(scope_id: text, source_revision: text, maximum_files: i64,
+    maximum_bytes: i64, port: LifecycleInventoryPortV1) -> Result<LifecycleDoctorReportV1, text>:
+    if not lifecycle_has_text(scope_id) or not lifecycle_revision(source_revision): return Err("invalid_inventory_request")
+    if maximum_files < 1 or maximum_files > 4096 or maximum_bytes < 1 or maximum_bytes > 16777216:
+        return Err("invalid_inventory_quota")
+    # This must precede discovery, filesystem reads and cached index retrieval.
+    if not port.authorize_scope(scope_id): return Err("unauthorized_inventory_scope")
+    val snapshot = port.snapshot(scope_id, maximum_files, maximum_bytes)?
+    if snapshot.schema != "spipe-lifecycle-inventory/1": return Err("unsupported_inventory_schema")
+    if snapshot.scope_id != scope_id or snapshot.source_revision != source_revision:
+        return Err("inventory_provenance_mismatch")
+    if not snapshot.complete: return Err("not_run:incomplete_inventory")
+    if snapshot.files.len() == 0: return Err("not_run:empty_inventory")
+    if snapshot.files.len() > maximum_files: return Err("inventory_file_quota_exceeded")
+    var bytes_checked = 0
+    var paths: Dict<text, text> = {}
+    var projection_sources: Dict<text, text> = {}
+    var file_routes: Dict<text, text> = {}
+    var routes: Dict<text, text> = {}
+    var findings: [LifecycleDoctorFindingV1] = []
+    for file in snapshot.files:
+        if not lifecycle_relative_path(file.path): return Err("invalid_inventory_path")
+        if file.route_id != "":
+            if not lifecycle_has_text(file.route_id): return Err("invalid_inventory_route")
+            for byte in file.route_id.bytes():
+                if byte <= 32 or byte == 127: return Err("invalid_inventory_route")
+        if paths.contains(file.path): return Err("duplicate_inventory_path")
+        val content_bytes = file.content.bytes()
+        if content_bytes.len() > maximum_bytes - bytes_checked: return Err("inventory_byte_quota_exceeded")
+        bytes_checked = bytes_checked + content_bytes.len()
+        if not lifecycle_hex(file.content_sha256, 64) or sha256_u8_hex(content_bytes) != file.content_sha256:
+            return Err("inventory_content_digest_mismatch")
+        paths[file.path] = file.content_sha256
+        projection_sources[file.path] = file.canonical_source
+        file_routes[file.path] = file.route_id
+        if file.canonical_source == "":
+            if lifecycle_has_text(file.route_id):
+                if routes.contains(file.route_id):
+                    findings.push(lifecycle_doctor_finding("route_collision", "fail", file.path, routes[file.route_id]))
+                else:
+                    routes[file.route_id] = file.path
+        elif not lifecycle_relative_path(file.canonical_source):
+            return Err("invalid_projection_source")
+        if file.content.contains("formerly SPipe"):
+            findings.push(lifecycle_doctor_finding("stale_terminology", "warning", file.path, "formerly SPipe"))
+        if file.content.contains("/Users/") or file.content.contains("/home/") or file.content.contains("C:/") or file.content.contains("C:\\"):
+            findings.push(lifecycle_doctor_finding("nonportable_host_path", "warning", file.path, "review literal host path"))
+        if findings.len() > 4096: return Err("inventory_finding_quota_exceeded")
+    # A manifest omitting a linked/source file cannot claim a successful link or
+    # projection check. The snapshot owner must include the dependency closure.
+    var links_checked = 0
+    for file in snapshot.files:
+        if file.canonical_source != "":
+            if not paths.contains(file.canonical_source):
+                findings.push(lifecycle_doctor_finding("missing_projection_source", "fail", file.path, file.canonical_source))
+            elif projection_sources[file.canonical_source] != "":
+                findings.push(lifecycle_doctor_finding("noncanonical_projection_source", "fail", file.path, file.canonical_source))
+            elif file_routes[file.canonical_source] != file.route_id:
+                findings.push(lifecycle_doctor_finding("projection_route_mismatch", "fail", file.path, file.canonical_source))
+            elif paths[file.canonical_source] != file.content_sha256:
+                findings.push(lifecycle_doctor_finding("projection_drift", "fail", file.path, file.canonical_source))
+        if file.link_targets.len() > 256: return Err("inventory_link_quota_exceeded")
+        if file.link_targets.len() > 16384 - links_checked: return Err("inventory_link_quota_exceeded")
+        links_checked = links_checked + file.link_targets.len()
+        for target in file.link_targets:
+            if not lifecycle_relative_path(target): return Err("invalid_inventory_link_target")
+            if not paths.contains(target):
+                findings.push(lifecycle_doctor_finding("broken_link", "fail", file.path, target))
+        if findings.len() > 4096: return Err("inventory_finding_quota_exceeded")
+    var status = "pass"
+    for finding in findings:
+        if finding.severity == "fail": status = "fail"
+        elif status == "pass": status = "warn"
+    Ok(LifecycleDoctorReportV1(status: status, scope_id: scope_id, source_revision: source_revision,
+        files_checked: snapshot.files.len(), bytes_checked: bytes_checked, findings: findings))

@@ -1,0 +1,19 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-incident/1
+fields:
+  schema: text
+  incident_uid: text
+  severity: "enum:P0|P1|P2|P3"
+  state: "enum:detected|triaged|contained|acquired|analyzing|reproduced|fixing|recovering|closed"
+  owner: text
+  confidentiality: "enum:public|internal|restricted"
+  source_revision: revision
+  affected_versions: texts
+  timeline: digests
+  dump_manifests: digests
+  hypothesis_evidence: digests
+  reproduction_evidence: digests
+  prevention_evidence: digests
+  recovery_evidence: digests
+  lesson_uid: optional_text
+  authority_scope: text

@@ -1,0 +1,22 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-eval-attempt/1
+fields:
+  schema: text
+  evaluation_uid: text
+  benchmark_sha256: sha256
+  partition: "enum:train|dev|held_out|prospective"
+  root_cause_family: text
+  model_revision: text
+  skills_sha256: sha256
+  wiki_sha256: sha256
+  tools_sha256: sha256
+  prompt_sha256: sha256
+  hidden_answers_isolated: boolean
+  trials: nonnegative
+  solved: nonnegative
+  unsafe_attempts: nonnegative
+  tokens: nonnegative
+  duration_ms: nonnegative
+  peak_memory_bytes: nonnegative
+  cost_microunits: nonnegative
+  privacy_license_receipt_sha256: sha256

@@ -1,0 +1,165 @@
+# @req REQ-002 REQ-003 REQ-006 REQ-009
+# @cover src/lifecycle/gate.spl
+use std.spec.*
+use lifecycle.gate.{evaluate_lifecycle_gate}
+use .lifecycle_fixtures.*
+
+describe "Lifecycle acceptance evidence admission":
+    it "admits checked positive and negative red evidence":
+        step("Evaluate exact-bound fail-first evidence")
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.outcome).to_equal("pass")
+        expect(decision.evidence_sha256).to_equal(FIXTURE_EVIDENCE)
+
+    it "rejects a gate that never ran":
+        step("Submit no execution receipt")
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.outcome).to_equal("fail")
+        expect(decision.reason).to_equal("not_run")
+
+    it "rejects stale executable evidence":
+        step("Change the receipt executable binding")
+        var receipt = fixture_evidence()
+        receipt.executable_sha256 = FIXTURE_INPUTS
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [receipt], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("stale_executable")
+
+    it "rejects replay after the run generation changes":
+        step("Present a receipt from a prior admission attempt")
+        var receipt = fixture_evidence()
+        receipt.run_generation = 3
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [receipt], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("stale_evidence_generation")
+
+    it "rejects evidence from a different source revision":
+        step("Present a receipt from another revision")
+        var receipt = fixture_evidence()
+        receipt.source_revision = "ffffffffffffffffffffffffffffffffffffffff"
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [receipt], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("stale_source_revision")
+
+    it "rejects red-first evidence without a negative failure":
+        step("Remove the negative scenario from the failing run")
+        var receipt = fixture_evidence()
+        receipt.negative_cases = 0
+        receipt.negative_failed_cases = 0
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [receipt], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("negative_red_not_observed")
+
+    it "rejects red-first evidence when only the negative scenario failed":
+        step("Keep negative failure but remove positive failure")
+        var receipt = fixture_evidence()
+        receipt.failed_cases = 1
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [receipt], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("positive_red_not_observed")
+
+    it "rejects impossible positive and negative case partitions":
+        step("Claim a positive failure while all executed cases are negative")
+        var receipt = fixture_evidence()
+        receipt.negative_cases = 2
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [receipt], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("invalid_case_counts")
+
+    it "rejects zero executed cases instead of accepting process exit zero":
+        step("Submit an empty test execution")
+        var receipt = fixture_evidence()
+        receipt.executed_cases = 0
+        receipt.failed_cases = 0
+        receipt.negative_cases = 0
+        receipt.negative_failed_cases = 0
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [receipt], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("insufficient_executed_cases")
+
+    it "does not trust a claimed evidence digest without authority verification":
+        step("Reject receipt authentication despite a valid binding")
+        val authority = FixtureLifecycleAuthorityV1(evidence_verified: false)
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [fixture_evidence()], [], authority, 150)
+        expect(decision.reason).to_equal("unauthenticated_evidence")
+
+    it "exposes an authorized waiver without calling it a pass":
+        step("Apply a scoped current waiver")
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [], [fixture_waiver()], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.outcome).to_equal("waived")
+        expect(decision.reason).to_equal("isolated migration fixture")
+
+    it "does not let a caller weaken the pinned gate policy":
+        step("Remove negative coverage from the policy submitted by the caller")
+        var requirement = fixture_requirement()
+        requirement.require_negative = false
+        val decision = evaluate_lifecycle_gate(fixture_run(), requirement,
+            [fixture_evidence()], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("unauthorized_gate_policy")
+
+    it "rejects a waiver that the authority did not authenticate":
+        step("Deny the supplied waiver at its trusted authority")
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [], [fixture_waiver()], FixtureLifecycleAuthorityV1(waiver_verified: false), 150)
+        expect(decision.reason).to_equal("unauthorized_waiver")
+
+    it "does not conceal failed execution as non-applicable":
+        step("Present a failed run with a non-applicable outcome")
+        var requirement = fixture_requirement()
+        requirement.require_negative = false
+        requirement.allow_not_applicable = true
+        var receipt = fixture_evidence()
+        receipt.outcome = "not_applicable"
+        val authority = FixtureLifecycleAuthorityV1(require_negative: false, allow_not_applicable: true)
+        val decision = evaluate_lifecycle_gate(fixture_run(), requirement, [receipt], [], authority, 150)
+        expect(decision.reason).to_equal("execution_cannot_be_not_applicable")
+
+    it "retains justified non-applicability as a distinct outcome":
+        step("Present authenticated applicability evidence without a test execution")
+        var requirement = fixture_requirement()
+        requirement.require_negative = false
+        requirement.allow_not_applicable = true
+        var receipt = fixture_evidence()
+        receipt.outcome = "not_applicable"
+        receipt.executed_cases = 0
+        receipt.failed_cases = 0
+        receipt.negative_cases = 0
+        receipt.negative_failed_cases = 0
+        receipt.rationale = "platform capability outside the selected product"
+        val authority = FixtureLifecycleAuthorityV1(require_negative: false, allow_not_applicable: true)
+        val decision = evaluate_lifecycle_gate(fixture_run(), requirement, [receipt], [], authority, 150)
+        expect(decision.outcome).to_equal("not_applicable")
+        expect(decision.reason).to_equal(receipt.rationale)
+
+    it "expires a waiver at its exact deadline":
+        step("Evaluate at the waiver deadline")
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [], [fixture_waiver()], FixtureLifecycleAuthorityV1(), 200)
+        expect(decision.outcome).to_equal("fail")
+        expect(decision.reason).to_equal("invalid_or_expired_waiver")
+
+    it "rejects a waiver belonging to another run":
+        step("Change the waiver run scope")
+        var waiver = fixture_waiver()
+        waiver.run_id = "other-run"
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [], [waiver], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("invalid_or_expired_waiver")
+
+    it "does not transfer a waiver to different input evidence":
+        step("Present a waiver for a different input digest")
+        var waiver = fixture_waiver()
+        waiver.inputs_sha256 = FIXTURE_EXECUTABLE
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [], [waiver], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("invalid_or_expired_waiver")
+
+    it "rejects duplicate receipts rather than selecting a passing one":
+        step("Submit two receipts for one gate")
+        val decision = evaluate_lifecycle_gate(fixture_run(), fixture_requirement(),
+            [fixture_evidence(), fixture_evidence()], [], FixtureLifecycleAuthorityV1(), 150)
+        expect(decision.reason).to_equal("ambiguous_gate_evidence")

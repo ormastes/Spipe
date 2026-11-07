@@ -1,0 +1,59 @@
+# @req REQ-003 REQ-006 REQ-009
+# @cover src/lifecycle/schema.spl
+use std.spec.*
+use std.io_runtime.{file_read}
+use std.common.sdn.value.{SdnValue}
+use lifecycle.schema.{read_lifecycle_record_v1}
+
+fn schema_error(result: Result<SdnValue, text>) -> text:
+    match result:
+        case Ok(_): "unexpected_success"
+        case Err(reason): reason
+
+describe "Versioned lifecycle SDN schema readers":
+    it "reads a canonical phase record using the bounded strict parser":
+        step("Read the version-one phase golden fixture")
+        val result = read_lifecycle_record_v1(file_read("test/fixture/lifecycle/phase_valid.sdn"),
+            file_read("schemas/lifecycle/phase_contracts.sdn"), "spipe-phase-contract/1")
+        match result:
+            case Ok(value):
+                match value:
+                    case Dict(fields):
+                        expect(fields.len()).to_equal(10)
+                        match fields["phase_id"]:
+                            case String(phase): expect(phase).to_equal("acceptance.bdd")
+                            case _: fail("phase_id must remain text")
+                    case _: fail("phase record must remain a mapping")
+            case Err(reason): fail(reason)
+
+    it "rejects a future record schema rather than interpreting it as version one":
+        step("Read the incompatible version-two golden fixture")
+        val result = read_lifecycle_record_v1(file_read("test/fixture/lifecycle/phase_unknown_version.sdn"),
+            file_read("schemas/lifecycle/phase_contracts.sdn"), "spipe-phase-contract/1")
+        expect(schema_error(result)).to_equal("unsupported_record_schema")
+
+    it "rejects caller-authored extra authority fields":
+        step("Read a record claiming caller_verified")
+        val result = read_lifecycle_record_v1(file_read("test/fixture/lifecycle/phase_unknown_field.sdn"),
+            file_read("schemas/lifecycle/phase_contracts.sdn"), "spipe-phase-contract/1")
+        expect(schema_error(result)).to_equal("unknown_or_missing_fields")
+
+    it "rejects a schema from another record family":
+        step("Try to read a phase with the incident descriptor")
+        val result = read_lifecycle_record_v1(file_read("test/fixture/lifecycle/phase_valid.sdn"),
+            file_read("schemas/lifecycle/incident.sdn"), "spipe-phase-contract/1")
+        expect(schema_error(result)).to_equal("schema_authority_mismatch")
+
+    it "does not discard duplicate authored fields":
+        step("Append a second phase_id to an otherwise valid record")
+        val source = file_read("test/fixture/lifecycle/phase_valid.sdn") + "\nphase_id: replacement\n"
+        val result = read_lifecycle_record_v1(source, file_read("schemas/lifecycle/phase_contracts.sdn"), "spipe-phase-contract/1")
+        expect(schema_error(result).starts_with("invalid_sdn:")).to_equal(true)
+
+    it "rejects oversized input before decoding a record":
+        step("Exceed the 64 KiB record budget")
+        var source = ""
+        while source.len() <= 65536:
+            source = source + "oversized input block\n"
+        val result = read_lifecycle_record_v1(source, file_read("schemas/lifecycle/phase_contracts.sdn"), "spipe-phase-contract/1")
+        expect(schema_error(result)).to_equal("invalid_sdn:source_limit")

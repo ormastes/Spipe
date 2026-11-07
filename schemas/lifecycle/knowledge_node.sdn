@@ -1,0 +1,16 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-knowledge-node/1
+fields:
+  schema: text
+  node_uid: text
+  scope: "enum:common|company|organization|project|user|host"
+  surface: "enum:raw|wiki|doc|skills|runtime"
+  state: "enum:active|needs_review|superseded|archived"
+  owner: text
+  path: text
+  content_sha256: sha256
+  children: texts
+  aliases: texts
+  dependencies: digests
+  last_verified_ms: nonnegative
+  access_policy_sha256: sha256

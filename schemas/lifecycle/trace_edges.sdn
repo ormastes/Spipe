@@ -1,0 +1,16 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-trace-edge/1
+fields:
+  schema: text
+  edge_uid: text
+  source_uid: text
+  target_uid: text
+  relation: "enum:satisfies|tests|implements|depends_on|observed_in|prevents|supersedes"
+  repository: text
+  source_revision: revision
+  source_content_sha256: sha256
+  target_content_sha256: sha256
+  provenance_sha256: sha256
+  creator: text
+  recorded_at_ms: nonnegative
+  checked: boolean

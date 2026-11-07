@@ -1,0 +1,131 @@
+# @req REQ-003 REQ-006 REQ-008 REQ-010
+# @cover src/lifecycle/doctor.spl
+use std.spec.*
+use std.common.crypto.sha256.{sha256_u8_hex}
+use lifecycle.doctor.{LifecycleInventoryFileV1, LifecycleInventorySnapshotV1,
+    LifecycleDoctorReportV1, LifecycleInventoryPortV1, inspect_lifecycle_inventory}
+use .lifecycle_fixtures.{FIXTURE_SOURCE}
+
+class FixtureInventoryPortV1 with LifecycleInventoryPortV1:
+    data: LifecycleInventorySnapshotV1
+
+    fn authorize_scope(scope_id: text) -> bool:
+        scope_id == "project-fixture"
+
+    fn snapshot(scope_id: text, maximum_files: i64, maximum_bytes: i64) -> Result<LifecycleInventorySnapshotV1, text>:
+        if scope_id != "project-fixture": fail("snapshot reached before scope authorization")
+        Ok(self.data)
+
+fn inventory_file(path: text, content: text, route: text, source: text, targets: [text]) -> LifecycleInventoryFileV1:
+    LifecycleInventoryFileV1(path: path, content: content,
+        content_sha256: sha256_u8_hex(content.bytes()), route_id: route,
+        canonical_source: source, link_targets: targets)
+
+fn inventory_snapshot(files: [LifecycleInventoryFileV1]) -> LifecycleInventorySnapshotV1:
+    LifecycleInventorySnapshotV1(schema: "spipe-lifecycle-inventory/1",
+        scope_id: "project-fixture", source_revision: FIXTURE_SOURCE, complete: true, files: files)
+
+fn doctor_error(result: Result<LifecycleDoctorReportV1, text>) -> text:
+    match result:
+        case Ok(report): "unexpected_report:" + report.status
+        case Err(reason): reason
+
+describe "Authorization-first lifecycle inventory doctor":
+    it "denies a named private scope before snapshot discovery":
+        step("Request an unauthorized scope through a read tripwire")
+        val port = FixtureInventoryPortV1(data: inventory_snapshot([]))
+        val result = inspect_lifecycle_inventory("private-scope", FIXTURE_SOURCE, 10, 1024, port)
+        expect(doctor_error(result)).to_equal("unauthorized_inventory_scope")
+
+    it "checks exact projections and normalized links in a complete inventory":
+        step("Inspect a canonical source and its byte-identical distribution copy")
+        val files = [inventory_file("skills/source.md", "source", "delivery.bdd", "", []),
+            inventory_file("plugin/source.md", "source", "delivery.bdd", "skills/source.md", ["skills/source.md"])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        match result:
+            case Ok(report):
+                expect(report.status).to_equal("pass")
+                expect(report.files_checked).to_equal(2)
+                expect(report.bytes_checked).to_equal(12)
+                expect(report.findings.len()).to_equal(0)
+            case Err(reason): fail(reason)
+
+    it "reports canonical route collisions instead of counting provider copies as new authorities":
+        step("Give two independent sources the same route ID")
+        val files = [inventory_file("skills/a.md", "a", "delivery.bdd", "", []),
+            inventory_file("skills/b.md", "b", "delivery.bdd", "", [])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        match result:
+            case Ok(report):
+                expect(report.status).to_equal("fail")
+                expect(report.findings[0].code).to_equal("route_collision")
+            case Err(reason): fail(reason)
+
+    it "rejects route metadata that disagrees with a projection's source":
+        step("Give a byte-identical provider copy a different capability route")
+        val files = [inventory_file("skills/a.md", "a", "delivery.bdd", "", []),
+            inventory_file("plugin/a.md", "a", "delivery.release", "skills/a.md", [])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        match result:
+            case Ok(report):
+                expect(report.status).to_equal("fail")
+                expect(report.findings[0].code).to_equal("projection_route_mismatch")
+            case Err(reason): fail(reason)
+
+    it "rejects malformed nonempty routes rather than omitting them from collision checks":
+        step("Present whitespace as an authored route ID")
+        val files = [inventory_file("skills/a.md", "a", "  ", "", [])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        expect(doctor_error(result)).to_equal("invalid_inventory_route")
+
+    it "reports missing normalized Markdown targets":
+        step("Inspect a checked link whose dependency is absent")
+        val files = [inventory_file("skills/a.md", "a", "delivery.bdd", "", ["missing.md"])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        match result:
+            case Ok(report): expect(report.findings[0].code).to_equal("broken_link")
+            case Err(reason): fail(reason)
+
+    it "does not let a projection name itself as canonical authority":
+        step("Present a self-referential distribution copy")
+        val files = [inventory_file("plugin/a.md", "a", "delivery.bdd", "plugin/a.md", [])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        match result:
+            case Ok(report):
+                expect(report.status).to_equal("fail")
+                expect(report.findings[0].code).to_equal("noncanonical_projection_source")
+            case Err(reason): fail(reason)
+
+    it "rejects an omitted or failed scan rather than declaring an empty pass":
+        step("Return no inventory files")
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot([])))
+        expect(doctor_error(result)).to_equal("not_run:empty_inventory")
+
+    it "rejects an over-budget snapshot without claiming a partial pass":
+        step("Exceed the authorized byte quota")
+        val files = [inventory_file("skills/a.md", "four", "delivery.bdd", "", [])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 3,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        expect(doctor_error(result)).to_equal("inventory_byte_quota_exceeded")
+
+    it "rejects an escaping relative path before analyzing it":
+        step("Return an invalid parent-relative inventory path")
+        val files = [inventory_file("../private.md", "private", "delivery.bdd", "", [])]
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot(files)))
+        expect(doctor_error(result)).to_equal("invalid_inventory_path")
+
+    it "does not trust a cached content digest after the document changes":
+        step("Change document content without updating its digest")
+        var file = inventory_file("skills/a.md", "before", "delivery.bdd", "", [])
+        file.content = "after"
+        val result = inspect_lifecycle_inventory("project-fixture", FIXTURE_SOURCE, 10, 1024,
+            FixtureInventoryPortV1(data: inventory_snapshot([file])))
+        expect(doctor_error(result)).to_equal("inventory_content_digest_mismatch")

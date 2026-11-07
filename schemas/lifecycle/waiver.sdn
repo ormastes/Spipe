@@ -1,0 +1,19 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-lifecycle-waiver/1
+fields:
+  schema: text
+  run_id: text
+  run_generation: nonnegative
+  gate_id: text
+  source_revision: revision
+  policy_sha256: sha256
+  executable_sha256: sha256
+  selector: text
+  inputs_sha256: sha256
+  authority_id: text
+  reviewer_id: text
+  reason: text
+  compensating_control: text
+  evidence_sha256: sha256
+  issued_at_ms: nonnegative
+  expires_at_ms: nonnegative

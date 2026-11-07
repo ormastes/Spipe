@@ -1,0 +1,14 @@
+schema: spipe-lifecycle-schema/1
+record_schema: spipe-gate-policy/1
+fields:
+  schema: text
+  gate_id: text
+  target_state: "enum:investigating|defined|designed|test_ready|implementing|verifying|releasable|released|observing|closed"
+  executable_sha256: sha256
+  selector: text
+  inputs_sha256: sha256
+  expected_outcome: "enum:pass|red"
+  minimum_cases: nonnegative
+  require_negative: boolean
+  allow_not_applicable: boolean
+  policy_sha256: sha256
