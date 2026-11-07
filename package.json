@@ -25,6 +25,7 @@
     "release/",
     "cli/",
     "src/",
+    "schemas/",
     "mcp/",
     "plugin/",
     "scripts/",
