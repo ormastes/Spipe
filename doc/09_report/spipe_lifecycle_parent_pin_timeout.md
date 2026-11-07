@@ -1,4 +1,16 @@
-# Verified packaging fix: parent handoff blocked
+# Verified packaging fix: parent handoff landed after guard update
+
+## Current result
+
+Simple PR #7705 merged into `release/1.0.0` on 2026-11-07 at `07289867d86524cdc54b3c35d3531477a4c86f9e`. The release branch's actual `.spipe/spipe` entry was read back as `d83f03160925c76a6a6617f7e52c1ebb3c557fd0`. This packaging handoff is landed; the larger lifecycle implementation remains draft SPipe #34 with zero executed scenarios.
+
+Another session had already landed guard change `aa56fbb348a5e2b2c9e2ee72757d284b1a2475d3`: batched tree-path resolution and committed-range push validation. Review confirmed that the range path checks readable commit endpoints, rejects empty/failed diffs, compares the full baseline for additions and rechecks affected sources. A real missing-base-blob negative fixture returned ERROR2; it did not produce a false PASS. No duplicate guard patch was made.
+
+The unpublished pin was rebased onto release commit `8358d7ceb3ee5641cc1ee913dba9a0a6d49271de`, producing reviewed head `2d1f4eba9ba11aa9a684daf8ae8f2d80aae58188`. Its unchanged canonical push passed all eleven blocking gates in 23197 ms, including the private-import gate in 22415 ms. The landing check passed eleven quick ratchets and twenty registry integrity checks. No signed local-CI receipt was available; the configured push reported that explicitly. PR review found no P0/P1 in this packaging-only delta; the owner PR merge was used while server checks were pending. This is not a claim that those pending checks or lifecycle execution passed.
+
+Receipts: `C:/dev/spipe-schema-pin-20261107-push-attempt2.log`, `C:/dev/spipe-schema-pin-20261107-land-attempt2.log`, and `C:/dev/spipe-schema-pin-20261107-landing.sdn`. The original timeout below is retained as historical evidence; its exact active fixture was not established.
+
+## Original blocked attempt
 
 Observed 2026-11-07 on the Windows host. This is a concrete tooling/performance issue record, not a claim that the guard's semantic result is FAIL or PASS.
 
