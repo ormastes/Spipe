@@ -82,6 +82,9 @@ plugin/skills/release/SKILL.md
 plugin/skills/sync/SKILL.md
 plugin/skills/spipe/SKILL.md
 plugin/skills/spipe-loop/SKILL.md
+plugin/wiki/simple_native_test_binaries.md
+plugin/wiki/build_debug_continuation.md
+test/unit/plugin_guide_packaging_test.js
 plugin/skills/sstack/SKILL.md
 plugin/skills/dev/SKILL.md
 plugin/skills/sp-dev/SKILL.md
@@ -133,6 +136,7 @@ node --check cli/spipe.js >/dev/null
 node --check mcp/server.js >/dev/null
 node --check scripts/project-self-review-guidance.js >/dev/null
 node scripts/project-self-review-guidance.js --check >/dev/null
+node --test test/unit/plugin_guide_packaging_test.js
 canonical_version="$(node cli/spipe.js --version)"
 if git -C ../.. rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git -C ../.. ls-files --stage examples/spipe | grep -q '^100'
