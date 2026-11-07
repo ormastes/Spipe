@@ -15,6 +15,8 @@ Source findings repaired and separately reviewed include dump callback revocatio
 
 Root also added the existing `schemas/` directory to the npm package allowlist; it was absent even though canonical schema readers require those artifacts. npm's required JSON manifest remains interoperability configuration. This packaging fix does not install missing plugin projections or qualify the runtime.
 
+The packaging fix was separately verified and merged upstream as SPipe PR #35. Its Simple release pin was refused when the existing private-import baseline guard overran the 900-second push budget and returned UNKNOWN. The concrete tooling issue and exact local handoff identity are retained in `spipe_lifecycle_parent_pin_timeout.md`. No parent landing or full lifecycle qualification is claimed.
+
 ## Actual runtime attempts
 
 Evidence is retained outside canonical documents under `C:/dev/spipe-lifecycle-runtime-evidence-20261107`.
