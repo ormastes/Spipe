@@ -6,7 +6,7 @@ description: Run a bounded SPipe check-and-repair or daily-debug evidence cycle.
 # SPipe Loop
 
 For Simple test binaries, first trace the
-[existing native runner and listing behavior](../../../wiki/simple_native_test_binaries.md).
+[existing native runner and listing behavior](../../wiki/simple_native_test_binaries.md).
 Repair that workflow using actual build/run evidence. Do not invent an
 aggregate registry or listing flag, or infer a foreign framework dependency
 from a comparison such as "like GoogleTest".
@@ -24,7 +24,7 @@ failed-object ledger. User-authorized optional diagnostics may be disabled or
 nonblocking; incomplete measurements, crashes and failed tests stay explicit.
 Do not restart healthy jobs just to apply a future checker setting.
 
-Follow the [build/debug continuation guide](../../../wiki/build_debug_continuation.md).
+Follow the [build/debug continuation guide](../../wiki/build_debug_continuation.md).
 Record scoped user-authorized time, memory or other checker bypasses in separate
 DIAGNOSTIC attempts with resource/progress monitoring, preserved failed receipts
 and unchanged truthful identity reporting. Reuse authorization already given;
