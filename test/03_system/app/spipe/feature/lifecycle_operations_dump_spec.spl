@@ -1,0 +1,61 @@
+# @req REQ-004 REQ-006 REQ-008
+# @cover src/lifecycle/operations/dump.spl
+use std.spec.*
+use lifecycle.operations.dump.*
+use .lifecycle_operations_fixtures.*
+
+describe "Restricted bounded dump reads":
+    it "stops after callback revocation before further protected work or byte release":
+        step("Deny dump discovery before owner lookup")
+        for phase in ["manifest", "read", "slice"]:
+            reset_operations_revocation()
+            expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 0, 3,
+                RevokingOperationsDumpPort(revoke_at: phase)))).to_equal("unauthorized_dump_scope")
+        for phase in ["catalog", "manifest"]:
+            reset_operations_revocation()
+            expect(operations_catalog_error(catalog_dumps("private-fixture", "incident-fixture", 1,
+                RevokingOperationsDumpPort(revoke_at: phase)))).to_equal("unauthorized_dump_scope")
+        reset_operations_revocation()
+
+    it "denies discovery and reads before provider or authenticator access":
+        step("Deny dump discovery before owner lookup")
+        val port = FixtureOperationsDumpPort(allowed: false, fail_provider: true)
+        expect(operations_catalog_error(catalog_dumps("private-fixture", "incident-fixture", 1, port))).to_equal("unauthorized_dump_scope")
+        expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 0, 3, port))).to_equal("unauthorized_dump_scope")
+
+    it "returns an authenticated manifest and byte-exact bounded slice":
+        step("Read bounded authorized dump slice")
+        match catalog_dumps("private-fixture", "incident-fixture", 1, fixture_operations_dump_port()):
+            case Ok(manifests): expect(manifests[0].dump_id).to_equal("dump-fixture")
+            case Err(reason): fail(reason)
+        match load_dump_slice(fixture_operations_manifest(), 1, 2, fixture_operations_dump_port()):
+            case Ok(slice):
+                expect(slice.offset).to_equal(1)
+                expect(slice.bytes).to_equal([98, 99])
+            case Err(reason): fail(reason)
+
+    it "rejects scope mismatch, unsupported schema and unauthenticated manifests":
+        step("Read bounded authorized dump slice")
+        expect(operations_catalog_error(catalog_dumps("private-fixture", "incident-fixture", 1,
+            FixtureOperationsDumpPort(bad_scope: true)))).to_equal("dump_scope_mismatch")
+        var manifest = fixture_operations_manifest()
+        manifest.schema = "spipe-dump-manifest/2"
+        expect(operations_slice_error(load_dump_slice(manifest, 0, 3, fixture_operations_dump_port()))).to_equal("invalid_dump_manifest")
+        expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 0, 3,
+            FixtureOperationsDumpPort(verified: false)))).to_equal("invalid_dump_manifest")
+
+    it "rejects digest mismatch and unexpected bytes":
+        step("Read bounded authorized dump slice")
+        expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 0, 3,
+            FixtureOperationsDumpPort(bad_hash: true)))).to_equal("dump_digest_mismatch")
+        expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 0, 3,
+            FixtureOperationsDumpPort(extra_bytes: true)))).to_equal("dump_quota_exceeded")
+        expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 1, 2,
+            FixtureOperationsDumpPort(slice_verified: false)))).to_equal("dump_digest_mismatch")
+
+    it "checks quotas before owner lookup and avoids overflowing offset addition":
+        step("Read bounded authorized dump slice")
+        val port = FixtureOperationsDumpPort(fail_provider: true)
+        expect(operations_catalog_error(catalog_dumps("private-fixture", "incident-fixture", 65, port))).to_equal("dump_quota_exceeded")
+        expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 9223372036854775807, 3, port))).to_equal("dump_quota_exceeded")
+        expect(operations_slice_error(load_dump_slice(fixture_operations_manifest(), 0, 1048577, port))).to_equal("dump_quota_exceeded")

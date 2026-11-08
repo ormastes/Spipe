@@ -1,0 +1,180 @@
+# @req REQ-004 REQ-006 REQ-008
+# @cover src/lifecycle/operations/incident.spl
+use std.spec.*
+use lifecycle.operations.incident.*
+use .lifecycle_operations_fixtures.*
+use .lifecycle_fixtures.*
+
+describe "Checked incident lifecycle":
+    it "denies rebind before private snapshot authority inspection":
+        step("Authorize incident scope")
+        expect(operations_incident_error(rebind_incident_run(fixture_operations_incident(), fixture_run(), 0,
+            FixtureOperationsIncidentAuthority(allowed: false, fail_action: true)))).to_equal("unauthorized_incident_scope")
+        expect(operations_incident_error(rebind_incident_run(fixture_operations_incident(), fixture_run(), 0,
+            FixtureOperationsIncidentAuthority(action_allowed: false)))).to_equal("unauthorized_incident_action")
+
+    it "rejects forged recovery receipts even with correct passing policy":
+        step("Advance checked incident evidence")
+        var incident = fixture_operations_incident()
+        incident.state = "prevented"
+        var action = fixture_operations_action()
+        action.target_state = "recovered"
+        action.event.kind = "recovered"
+        var requirement = fixture_requirement()
+        requirement.expected_outcome = "pass"
+        var receipt = fixture_evidence()
+        receipt.outcome = "pass"
+        receipt.failed_cases = 0
+        receipt.negative_failed_cases = 0
+        action.requirements = [requirement]
+        action.evidence = [receipt]
+        expect(operations_incident_error(advance_incident(incident, action, 150,
+            fixture_operations_incident_authority(),
+            FixtureLifecycleAuthorityV1(expected_outcome: "pass", evidence_verified: false)))).to_equal("incident_gate_failed:unauthenticated_evidence")
+
+    it "runs all checked phases through closed with a fixed revision rebind":
+        step("Advance checked incident evidence")
+        var incident = fixture_operations_incident()
+        for phase in ["triaged", "contained", "analyzed", "reproduced", "fixed", "prevented", "recovered", "closed"]:
+            if phase == "fixed":
+                var next_run = fixture_run()
+                next_run.source_revision = "ffffffffffffffffffffffffffffffffffffffff"
+                next_run.generation = 5
+                match rebind_incident_run(incident, next_run, incident.generation, fixture_operations_incident_authority()):
+                    case Ok(updated): incident = updated
+                    case Err(reason): fail(reason)
+            var action = fixture_operations_action()
+            action.target_state = phase
+            action.expected_generation = incident.generation
+            action.event.kind = phase
+            action.event.event_id = phase
+            var requirement = fixture_requirement()
+            var receipt = fixture_evidence()
+            receipt.source_revision = incident.run.source_revision
+            receipt.run_generation = incident.run.generation
+            var gate_authority = FixtureLifecycleAuthorityV1()
+            if ["fixed", "prevented", "recovered", "closed"].contains(phase):
+                requirement.expected_outcome = "pass"
+                receipt.outcome = "pass"
+                receipt.failed_cases = 0
+                receipt.negative_failed_cases = 0
+                gate_authority.expected_outcome = "pass"
+            action.requirements = [requirement]
+            action.evidence = [receipt]
+            match advance_incident(incident, action, 150, fixture_operations_incident_authority(), gate_authority):
+                case Ok(updated): incident = updated
+                case Err(reason): fail(reason)
+        expect(incident.state).to_equal("closed")
+        expect(incident.generation).to_equal(9)
+        expect(incident.timeline.len()).to_equal(8)
+        expect(incident.timeline[3].kind).to_equal("reproduced")
+
+    it "rejects stale and unrelated run rebinds while preserving historical events":
+        step("Reject stale incident generation")
+        var incident = fixture_operations_incident()
+        incident.state = "reproduced"
+        incident.timeline = [fixture_operations_event()]
+        var next_run = fixture_run()
+        next_run.generation = 5
+        next_run.source_revision = "ffffffffffffffffffffffffffffffffffffffff"
+        expect(operations_incident_error(rebind_incident_run(incident, next_run, 1,
+            fixture_operations_incident_authority()))).to_equal("stale_incident_generation")
+        next_run.run_id = "unrelated"
+        expect(operations_incident_error(rebind_incident_run(incident, next_run, 0,
+            fixture_operations_incident_authority()))).to_equal("invalid_incident_transition")
+        next_run = fixture_run()
+        next_run.generation = 5
+        expect(operations_incident_error(rebind_incident_run(incident, next_run, 0,
+            fixture_operations_incident_authority()))).to_equal("invalid_incident_transition")
+
+    it "creates a scoped incident and rejects invalid severity":
+        step("Authorize incident scope")
+        val result = create_incident("private-fixture", "incident-fixture", "P1", fixture_run(), fixture_operations_incident_authority())
+        match result:
+            case Ok(incident):
+                expect(incident.schema).to_equal("spipe-incident-state/1")
+                expect(incident.state).to_equal("detected")
+                expect(incident.timeline.len()).to_equal(0)
+            case Err(reason): fail(reason)
+        expect(operations_incident_error(create_incident("private-fixture", "incident-fixture", "critical", fixture_run(),
+            fixture_operations_incident_authority()))).to_equal("invalid_incident_severity")
+
+    it "appends authenticated triage without changing the original timeline":
+        step("Advance checked incident evidence")
+        val original = fixture_operations_incident()
+        val result = advance_incident(original, fixture_operations_action(), 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1())
+        match result:
+            case Ok(updated):
+                expect(updated.state).to_equal("triaged")
+                expect(updated.generation).to_equal(1)
+                expect(updated.timeline[0].evidence_sha256).to_equal(FIXTURE_EVIDENCE)
+            case Err(reason): fail(reason)
+        expect(original.timeline.len()).to_equal(0)
+
+    it "denies scope before inspecting action authority":
+        step("Authorize incident scope")
+        val authority = FixtureOperationsIncidentAuthority(allowed: false, fail_action: true)
+        expect(operations_incident_error(advance_incident(fixture_operations_incident(), fixture_operations_action(),
+            150, authority, FixtureLifecycleAuthorityV1()))).to_equal("unauthorized_incident_scope")
+
+    it "rejects stale generation and unknown incident schema":
+        step("Reject stale incident generation")
+        var action = fixture_operations_action()
+        action.expected_generation = 1
+        expect(operations_incident_error(advance_incident(fixture_operations_incident(), action, 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("stale_incident_generation")
+        var incident = fixture_operations_incident()
+        incident.schema = "spipe-incident-state/99"
+        expect(operations_incident_error(advance_incident(incident, fixture_operations_action(), 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("invalid_incident_event")
+        incident.schema = "spipe-incident/1"
+        expect(operations_incident_error(advance_incident(incident, fixture_operations_action(), 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("invalid_incident_event")
+
+    it "rejects phase skipping and forged recovery evidence":
+        step("Advance checked incident evidence")
+        var action = fixture_operations_action()
+        action.target_state = "closed"
+        expect(operations_incident_error(advance_incident(fixture_operations_incident(), action, 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("invalid_incident_transition")
+        var incident = fixture_operations_incident()
+        incident.state = "prevented"
+        action.target_state = "recovered"
+        action.event.kind = "recovered"
+        expect(operations_incident_error(advance_incident(incident, action, 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("missing_incident_requirements")
+
+    it "rejects caller-selected empty policy and unauthenticated receipts":
+        step("Advance checked incident evidence")
+        var action = fixture_operations_action()
+        action.requirements = []
+        expect(operations_incident_error(advance_incident(fixture_operations_incident(), action, 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("unauthorized_incident_action")
+        expect(operations_incident_error(advance_incident(fixture_operations_incident(), fixture_operations_action(), 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1(evidence_verified: false)))).to_equal("incident_gate_failed:unauthenticated_evidence")
+
+    it "rejects event receipt mismatch and duplicate event replay":
+        step("Advance checked incident evidence")
+        var action = fixture_operations_action()
+        action.event.evidence_sha256 = FIXTURE_INPUTS
+        expect(operations_incident_error(advance_incident(fixture_operations_incident(), action, 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("invalid_incident_event")
+        var incident = fixture_operations_incident()
+        incident.timeline = [fixture_operations_event()]
+        expect(operations_incident_error(advance_incident(incident, fixture_operations_action(), 150,
+            fixture_operations_incident_authority(), FixtureLifecycleAuthorityV1()))).to_equal("invalid_incident_event")
+
+    it "retains emergency containment while requiring triage before analysis":
+        step("Advance checked incident evidence")
+        var incident = fixture_operations_incident()
+        incident.state = "contained"
+        expect(legal_incident_transition(incident, "analyzed")).to_equal(false)
+        expect(legal_incident_transition(incident, "triaged")).to_equal(true)
+        var event = fixture_operations_event()
+        event.kind = "contained"
+        incident.state = "triaged"
+        incident.timeline = [event]
+        expect(legal_incident_transition(incident, "analyzed")).to_equal(true)
+        incident.timeline = []
+        expect(legal_incident_transition(incident, "analyzed")).to_equal(false)

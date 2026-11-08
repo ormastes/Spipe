@@ -1,0 +1,95 @@
+"""Pure deterministic provider projections; canonical skill remains authoritative.
+
+This module plans exact bytes. A host-owned writer must check expected previous
+digests and durably apply the complete plan; callers cannot claim generation or
+installation from planning alone. It does not replace existing managed blocks.
+"""
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_hex}
+use std.common.crypto.sha256.{sha256_u8_hex}
+use std.common.sdn.strict_v1.{sdn_parse_strict_v1}
+use std.common.sdn.strict_types_v1.{SdnStrictLimitsV1}
+use std.common.sdn.value.{SdnValue}
+
+pub struct LifecycleSkillProjectionV1:
+    provider: text
+    relative_path: text
+    canonical_sha256: text
+    projection_sha256: text
+    content: text
+
+pub fn lifecycle_skill_digest(source: text) -> text:
+    sha256_u8_hex(source.bytes())
+
+pub fn lifecycle_projection_path(provider: text) -> Result<text, text>:
+    match provider:
+        case "codex": Ok(".codex/skills/spipe-lifecycle/SKILL.md")
+        case "claude": Ok(".claude/skills/spipe-lifecycle.md")
+        case "gemini": Ok(".gemini/commands/spipe_lifecycle.toml")
+        case "kimi": Ok(".kimi/skills/spipe-lifecycle/SKILL.md")
+        case "plugin": Ok("plugin/skills/spipe-lifecycle/SKILL.md")
+        case _: Err("unsupported_skill_provider")
+
+fn valid_lifecycle_skill_frontmatter(source: text) -> bool:
+    if not source.starts_with("---\n"): return false
+    val lines = source.split("\n")
+    var index = 1
+    var header = ""
+    var closed = false
+    while index < lines.len():
+        if lines[index] == "---":
+            closed = true
+            break
+        if header.bytes().len() + lines[index].bytes().len() + 1 > 4096: return false
+        header = header + lines[index] + "\n"
+        index = index + 1
+    if not closed: return false
+    val limits = SdnStrictLimitsV1(max_source_bytes: 4096, max_depth: 4,
+        max_nodes: 32, max_rows: 0, max_cells: 0, max_columns: 16)
+    match sdn_parse_strict_v1(header, limits):
+        case Ok(document):
+            match document.value:
+                case Dict(fields):
+                    if fields.len() != 2 or not fields.contains("name") or not fields.contains("description"): return false
+                    match fields["name"]:
+                        case String(name):
+                            if name != "spipe-lifecycle": return false
+                        case _: return false
+                    match fields["description"]:
+                        case String(description): return lifecycle_has_text(description)
+                        case _: return false
+                case _: false
+        case Err(_): false
+
+pub fn plan_lifecycle_skill_projections(source: text, expected_source_sha256: text,
+    providers: [text]) -> Result<[LifecycleSkillProjectionV1], text>:
+    if source.bytes().len() > 65536 or not lifecycle_has_text(expected_source_sha256) or not lifecycle_hex(expected_source_sha256, 64):
+        return Err("invalid_skill_source")
+    if not valid_lifecycle_skill_frontmatter(source):
+        return Err("invalid_skill_frontmatter")
+    val actual = lifecycle_skill_digest(source)
+    if actual != expected_source_sha256: return Err("stale_canonical_skill")
+    if providers.len() == 0 or providers.len() > 5: return Err("invalid_provider_count")
+    var seen: [text] = []
+    var projections: [LifecycleSkillProjectionV1] = []
+    for provider in providers:
+        if seen.contains(provider): return Err("duplicate_skill_provider")
+        val path = lifecycle_projection_path(provider)?
+        seen.push(provider)
+        # Keep frontmatter first for native skill discovery. The directive
+        # routes to the canonical file so relative links keep their source root.
+        val directive = "<!-- generated-from: skills/lifecycle/SKILL.md sha256=" + actual + " -->\n" +
+            "Read `skills/lifecycle/SKILL.md` in the resolved common SPipe checkout and follow it.\n" +
+            "This is a generated discovery adapter. Resolve canonical links from the common checkout; do not hand-edit this file.\n"
+        var projected = "---\nname: spipe-lifecycle\ndescription: Follow the canonical SPipe lifecycle workflow for changes, incidents and learning.\n---\n\n" + directive
+        if provider == "gemini":
+            projected = "description = \"Follow the canonical SPipe lifecycle workflow.\"\nprompt = \"\"\"\n" + directive + "\"\"\"\n"
+        projections.push(LifecycleSkillProjectionV1(provider: provider, relative_path: path,
+            canonical_sha256: actual, projection_sha256: lifecycle_skill_digest(projected), content: projected))
+    Ok(projections)
+
+pub fn verify_lifecycle_skill_projection(source: text, projection: LifecycleSkillProjectionV1) -> Result<bool, text>:
+    val planned = plan_lifecycle_skill_projections(source, projection.canonical_sha256, [projection.provider])?
+    val expected = planned[0]
+    if expected.relative_path != projection.relative_path or expected.projection_sha256 != projection.projection_sha256 or expected.content != projection.content:
+        return Err("skill_projection_drift")
+    Ok(true)

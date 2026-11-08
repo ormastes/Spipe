@@ -1,0 +1,105 @@
+"""Checked incident transitions return candidates; durable CAS belongs to parent."""
+use .contracts.*
+use lifecycle.contracts.{LifecycleRunV1, LifecycleAuthorityV1, GateEvidenceV1,
+    lifecycle_valid_run, lifecycle_has_text, lifecycle_hex}
+use lifecycle.gate.{evaluate_lifecycle_gate}
+
+pub fn valid_incident_severity(severity: text) -> bool:
+    ["P0", "P1", "P2", "P3"].contains(severity)
+
+pub fn rebind_incident_run(incident: IncidentV1, next_run: LifecycleRunV1, expected_generation: i64,
+    authority: IncidentAuthorityV1) -> Result<IncidentV1, text>:
+    if not authority.authorize_incident(incident.scope_id, incident.incident_id, "rebind"):
+        return Err("unauthorized_incident_scope")
+    if not authority.authorize_run_rebind(incident, next_run): return Err("unauthorized_incident_action")
+    if incident.generation != expected_generation or incident.generation < 0 or incident.generation == 9223372036854775807:
+        return Err("stale_incident_generation")
+    if (incident.schema != "spipe-incident-state/1" or incident.state != "reproduced" or
+        not lifecycle_valid_run(incident.run) or not lifecycle_valid_run(next_run) or
+        next_run.run_id != incident.run.run_id or next_run.policy_sha256 != incident.run.policy_sha256 or
+        next_run.generation <= incident.run.generation or next_run.source_revision == incident.run.source_revision):
+        return Err("invalid_incident_transition")
+    Ok(IncidentV1(schema: incident.schema, incident_id: incident.incident_id, scope_id: incident.scope_id,
+        run: next_run, severity: incident.severity, state: incident.state, generation: incident.generation + 1,
+        timeline: incident.timeline))
+
+pub fn create_incident(scope_id: text, incident_id: text, severity: text,
+    run: LifecycleRunV1, authority: IncidentAuthorityV1) -> Result<IncidentV1, text>:
+    if not authority.authorize_incident(scope_id, incident_id, "create"): return Err("unauthorized_incident_scope")
+    if not valid_incident_severity(severity): return Err("invalid_incident_severity")
+    if not lifecycle_has_text(scope_id) or not lifecycle_has_text(incident_id) or not lifecycle_valid_run(run):
+        return Err("invalid_incident_event")
+    Ok(IncidentV1(schema: "spipe-incident-state/1", incident_id: incident_id, scope_id: scope_id,
+        run: run, severity: severity, state: "detected", generation: 0, timeline: []))
+
+pub fn legal_incident_transition(incident: IncidentV1, target: text) -> bool:
+    if incident.state == "detected": return target == "triaged" or target == "contained"
+    if incident.state == "triaged":
+        # Emergency containment is retained when triage follows containment.
+        for event in incident.timeline:
+            if event.kind == "contained": return target == "analyzed"
+        return target == "contained"
+    if incident.state == "contained":
+        var triaged = false
+        for event in incident.timeline:
+            if event.kind == "triaged": triaged = true
+        if triaged: return target == "analyzed"
+        return target == "triaged"
+    val states = ["analyzed", "reproduced", "fixed", "prevented", "recovered", "closed"]
+    var index = 0
+    while index < states.len() - 1:
+        if incident.state == states[index]: return target == states[index + 1]
+        index = index + 1
+    false
+
+pub fn advance_incident(incident: IncidentV1, action: IncidentActionV1, now_ms: i64,
+    authority: IncidentAuthorityV1, gate_authority: LifecycleAuthorityV1) -> Result<IncidentV1, text>:
+    if not authority.authorize_incident(incident.scope_id, incident.incident_id, "advance"):
+        return Err("unauthorized_incident_scope")
+    if not authority.authorize_action(incident, action): return Err("unauthorized_incident_action")
+    if incident.schema != "spipe-incident-state/1" or not lifecycle_valid_run(incident.run): return Err("invalid_incident_event")
+    if not valid_incident_severity(incident.severity): return Err("invalid_incident_severity")
+    if incident.generation != action.expected_generation: return Err("stale_incident_generation")
+    if incident.generation < 0 or incident.generation == 9223372036854775807: return Err("stale_incident_generation")
+    if not legal_incident_transition(incident, action.target_state): return Err("invalid_incident_transition")
+    val event = action.event
+    if (not lifecycle_has_text(event.event_id) or not lifecycle_has_text(event.summary) or
+        event.kind != action.target_state or event.occurred_at_ms < 0 or event.occurred_at_ms > now_ms or
+        not lifecycle_hex(event.evidence_sha256, 64) or incident.timeline.len() >= 256): return Err("invalid_incident_event")
+    var previous_time = -1
+    var event_ids: [text] = []
+    for prior in incident.timeline:
+        if (prior.occurred_at_ms < previous_time or prior.occurred_at_ms > event.occurred_at_ms or
+            event_ids.contains(prior.event_id) or prior.event_id == event.event_id): return Err("invalid_incident_event")
+        event_ids.push(prior.event_id)
+        previous_time = prior.occurred_at_ms
+    if action.requirements.len() == 0 or action.requirements.len() > 64 or action.evidence.len() > 64:
+        return Err("missing_incident_requirements")
+    var seen: [text] = []
+    var event_bound = false
+    for requirement in action.requirements:
+        if seen.contains(requirement.gate_id) or requirement.allow_not_applicable: return Err("missing_incident_requirements")
+        if action.target_state == "reproduced":
+            if requirement.expected_outcome != "red" or not requirement.require_negative or requirement.minimum_cases < 2:
+                return Err("missing_incident_requirements")
+        if ["fixed", "prevented", "recovered", "closed"].contains(action.target_state):
+            if requirement.expected_outcome != "pass" or not requirement.require_negative or requirement.minimum_cases < 2:
+                return Err("missing_incident_requirements")
+        seen.push(requirement.gate_id)
+        var receipts: [GateEvidenceV1] = []
+        for receipt in action.evidence:
+            if receipt.gate_id == requirement.gate_id: receipts.push(receipt)
+        val decision = evaluate_lifecycle_gate(incident.run, requirement, receipts, [], gate_authority, now_ms)
+        if decision.outcome != "pass": return Err("incident_gate_failed:" + decision.reason)
+        if ["fixed", "prevented", "recovered", "closed"].contains(action.target_state):
+            if receipts[0].executed_cases <= receipts[0].negative_cases:
+                return Err("incident_gate_failed:positive_cases_not_executed")
+        if decision.evidence_sha256 == event.evidence_sha256: event_bound = true
+    for receipt in action.evidence:
+        if not seen.contains(receipt.gate_id): return Err("incident_gate_failed:orphan_gate_receipt")
+    if not event_bound: return Err("invalid_incident_event")
+    var timeline = incident.timeline
+    timeline.push(event)
+    Ok(IncidentV1(schema: incident.schema, incident_id: incident.incident_id, scope_id: incident.scope_id,
+        run: incident.run, severity: incident.severity, state: action.target_state,
+        generation: incident.generation + 1, timeline: timeline))

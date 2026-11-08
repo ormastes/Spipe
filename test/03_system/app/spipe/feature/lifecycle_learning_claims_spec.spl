@@ -1,0 +1,76 @@
+# @req REQ-005 REQ-008
+# @cover src/lifecycle/learning/claims.spl
+use std.spec.*
+use lifecycle.learning.claims.*
+use .lifecycle_learning_fixtures.*
+
+describe "Knowledge owner curation":
+    it "denies discovery and review before owner access":
+        step("Authorize the knowledge scope")
+        val owner = FixtureLearningOwnerV1(allowed: false)
+        expect(learning_default_claims(fixture_learning_scope(), owner).len()).to_equal(0)
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), fixture_learning_review(), owner).reason).to_equal("unauthorized")
+
+    it "delegates authenticated archival preserving provenance":
+        step("Review and archive a duplicate claim")
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), fixture_learning_review(), fixture_learning_owner()).outcome).to_equal("PASS")
+
+    it "rejects stale input and atomic CAS failure":
+        var review = fixture_learning_review()
+        review.expected_content_sha256 = ""
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), review, fixture_learning_owner()).reason).to_equal("stale_review")
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), fixture_learning_review(), FixtureLearningOwnerV1(commit_allowed: false)).reason).to_equal("stale_or_rejected_commit")
+
+    it "filters archived superseded review-pending and alias records":
+        step("Retrieve active claims")
+        val active = fixture_learning_claim()
+        var archived = active
+        archived.status = "archived"
+        var superseded = active
+        superseded.status = "superseded"
+        var pending = active
+        pending.status = "needs_review"
+        var alias = active
+        alias.canonical_uid = "claim:b"
+        val owner = FixtureLearningOwnerV1(records: [active, archived, superseded, pending, alias])
+        expect(learning_default_claims(fixture_learning_scope(), owner).len()).to_equal(1)
+
+    it "rejects self aliases and chained targets":
+        var review = fixture_learning_review()
+        review.decision = "alias"
+        review.replacement_uid = "claim:a"
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), review, fixture_learning_owner()).reason).to_equal("invalid_alias")
+        review.replacement_uid = "claim:b"
+        var target = fixture_learning_claim()
+        target.uid = "claim:b"
+        target.canonical_uid = "claim:c"
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), review, FixtureLearningOwnerV1(records: [target])).reason).to_equal("invalid_alias_target")
+
+    it "rejects cross-scope target and unauthenticated reviews":
+        var review = fixture_learning_review()
+        review.decision = "alias"
+        review.replacement_uid = "claim:b"
+        var target = fixture_learning_claim()
+        target.uid = "claim:b"
+        target.scope.scope_uid = "user:private"
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), review, FixtureLearningOwnerV1(records: [target])).reason).to_equal("invalid_alias_target")
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), fixture_learning_review(), FixtureLearningOwnerV1(reviews_verified: false)).reason).to_equal("unverified_review")
+
+    it "delegates an alias only for a unique active canonical target":
+        var review = fixture_learning_review()
+        review.decision = "alias"
+        review.replacement_uid = "claim:b"
+        var target = fixture_learning_claim()
+        target.uid = "claim:b"
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), review, FixtureLearningOwnerV1(records: [target])).outcome).to_equal("PASS")
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), review, FixtureLearningOwnerV1(records: [target, target])).reason).to_equal("missing_or_ambiguous_alias_target")
+
+    it "rejects an alias when its checked target changes before atomic commit":
+        step("Reject a concurrent archive or alias of the checked target")
+        var review = fixture_learning_review()
+        review.decision = "alias"
+        review.replacement_uid = "claim:b"
+        var target = fixture_learning_claim()
+        target.uid = "claim:b"
+        val owner = FixtureLearningOwnerV1(records: [target], target_changed_at_commit: true)
+        expect(learning_review_claim(fixture_learning_scope(), fixture_learning_claim(), review, owner).reason).to_equal("stale_or_rejected_commit")

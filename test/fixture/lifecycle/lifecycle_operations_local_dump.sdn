@@ -1,0 +1,3 @@
+schema = "spipe-benign-local-dump-fixture/1"
+classification = "synthetic-public"
+message = "bounded retained owner read fixture; no private memory"

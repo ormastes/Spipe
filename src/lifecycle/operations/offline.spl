@@ -1,0 +1,30 @@
+"""Read-only local offline queries; transport and debugger execution are host-owned."""
+use .contracts.{OfflineDebugRequestV1, OfflineDebugResultV1, OfflineDebugPortV1}
+use .dump.{valid_dump_manifest, OPERATIONS_MAX_SLICE_BYTES}
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_hex}
+
+pub fn query_offline_dump(request: OfflineDebugRequestV1,
+    port: OfflineDebugPortV1) -> Result<OfflineDebugResultV1, text>:
+    if not port.authorize_query(request): return Err("unauthorized_dump_scope")
+    if request.scope_id != request.manifest.scope_id or request.incident_id != request.manifest.incident_id:
+        return Err("dump_scope_mismatch")
+    if not valid_dump_manifest(request.manifest): return Err("invalid_dump_manifest")
+    if request.maximum_bytes <= 0 or request.maximum_bytes > OPERATIONS_MAX_SLICE_BYTES:
+        return Err("dump_quota_exceeded")
+    # Closed query vocabulary prevents arbitrary debugger commands, process
+    # attachment, remote access and memory export at this boundary.
+    if not ["summary", "threads", "backtrace", "modules"].contains(request.query):
+        return Err("unsupported_offline_adapter")
+    if not port.authorize_query(request): return Err("unauthorized_dump_scope")
+    val result = port.query(request)?
+    if not port.authorize_query(request): return Err("unauthorized_dump_scope")
+    if (result.source_revision != request.manifest.source_revision or
+        result.dump_sha256 != request.manifest.content_sha256 or
+        not lifecycle_has_text(result.adapter_id) or not lifecycle_hex(result.evidence_sha256, 64) or
+        not lifecycle_has_text(result.summary) or result.summary.bytes().len() > request.maximum_bytes):
+        return Err("offline_result_mismatch")
+    if not port.authorize_query(request): return Err("unauthorized_dump_scope")
+    val result_verified = port.verify_result(request, result)
+    if not port.authorize_query(request): return Err("unauthorized_dump_scope")
+    if not result_verified: return Err("offline_result_mismatch")
+    Ok(result)

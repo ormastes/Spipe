@@ -1,0 +1,97 @@
+# @req REQ-007 REQ-008
+# @cover src/lifecycle/learning/registry.spl src/lifecycle/learning/persistence.spl
+use std.spec.*
+use std.common.sdn.value.{SdnValue}
+use std.common.sdn.encode.{sdn_encode_canonical}
+use std.common.sdn.strict_v1.{sdn_parse_strict_v1}
+use std.common.sdn.strict_types_v1.{SdnStrictLimitsV1}
+use lifecycle.learning.registry.*
+use lifecycle.learning.persistence.{learning_prepare_eval_proposal}
+use lifecycle.learning.ladder.{learning_summarize_trials}
+use .lifecycle_learning_fixtures.*
+use .lifecycle_fixtures.{FIXTURE_EVIDENCE, FIXTURE_DIGEST}
+
+fn proposal_error(result: Result<LearningEvalProposalV1, text>) -> text:
+    match result:
+        case Ok(_): "unexpected_success"
+        case Err(reason): reason
+
+fn proposal_round_trip(source: text) -> SdnValue:
+    val limits = SdnStrictLimitsV1(max_source_bytes: 1048576, max_depth: 16,
+        max_nodes: 65536, max_rows: 4096, max_cells: 65536, max_columns: 64)
+    match sdn_parse_strict_v1(source, limits):
+        case Ok(document):
+            expect(sdn_encode_canonical(document.value)).to_equal(source)
+            document.value
+        case Err(issue):
+            fail(issue.code)
+            SdnValue.Null
+
+describe "Existing attempt evaluation proposal projection":
+    it "round trips complete canonical evidence without trusting aggregate fields":
+        step("Serialize a pending proposal for the existing attempt owner")
+        var summary = learning_summarize_trials(fixture_learning_trials(), fixture_learning_policy())
+        summary.tokens = 0
+        match learning_encode_eval_proposal(fixture_learning_scope(), summary, FIXTURE_EVIDENCE):
+            case Ok(proposal):
+                expect(proposal.attempt_id).to_equal("attempt-a")
+                expect(proposal.result).to_equal("proposal_pending_review")
+                expect(proposal.attempt_source_path).to_equal(".spipe/llm-finetune-process/attempts/attempt-a.sdn")
+                expect(proposal.metrics).to_equal(proposal.proposal_sdn)
+                val decoded = proposal_round_trip(proposal.proposal_sdn)
+                match decoded:
+                    case Dict(fields):
+                        expect(fields.len()).to_equal(9)
+                        match fields["metrics"]:
+                            case Dict(metrics): expect(metrics["tokens"]).to_equal(SdnValue.Int(40))
+                            case _: fail("metrics must be a mapping")
+                        match fields["trials"]:
+                            case Array(trials): expect(trials.len()).to_equal(4)
+                            case _: fail("complete trials required")
+                    case _: fail("proposal must be a mapping")
+                proposal_round_trip(proposal.eval_entry_sdn)
+            case Err(reason): fail(reason)
+
+    it "preserves escaped model identity through the host encoder":
+        var trials = fixture_learning_trials()
+        var index = 0
+        while index < trials.len():
+            trials[index].model = "model\"quoted\nnext"
+            index = index + 1
+        val summary = learning_summarize_trials(trials, fixture_learning_policy())
+        match learning_encode_eval_proposal(fixture_learning_scope(), summary, FIXTURE_EVIDENCE):
+            case Ok(proposal):
+                proposal_round_trip(proposal.proposal_sdn)
+                expect(proposal.proposal_sdn.contains("model\\\"quoted\\nnext")).to_equal(true)
+            case Err(reason): fail(reason)
+
+    it "binds exact source digest and rejects caller paths in attempt identity":
+        val summary = learning_summarize_trials(fixture_learning_trials(), fixture_learning_policy())
+        expect(proposal_error(learning_encode_eval_proposal(fixture_learning_scope(), summary, ""))).to_equal("invalid_attempt_source_digest")
+        var changed = summary
+        changed.policy.attempt_uid = "../private"
+        var index = 0
+        while index < changed.trials.len():
+            changed.trials[index].attempt_uid = "../private"
+            index = index + 1
+        expect(proposal_error(learning_encode_eval_proposal(fixture_learning_scope(), changed, FIXTURE_EVIDENCE))).to_equal("invalid_attempt_id")
+        match learning_encode_eval_proposal(fixture_learning_scope(), summary, FIXTURE_EVIDENCE):
+            case Ok(first):
+                match learning_encode_eval_proposal(fixture_learning_scope(), summary, FIXTURE_DIGEST):
+                    case Ok(second): expect(first.proposal_sdn == second.proposal_sdn).to_equal(false)
+                    case Err(reason): fail(reason)
+            case Err(reason): fail(reason)
+
+    it "prepares only authenticated proposals bound to an existing authorized attempt":
+        step("Authenticate proposal and existing attempt before retained persistence")
+        val summary = learning_summarize_trials(fixture_learning_promotion_trials(), fixture_learning_policy())
+        val checked = FixtureLearningOwnerV1(promotion_verified: true)
+        match learning_prepare_eval_proposal(fixture_learning_scope(), summary, FIXTURE_EVIDENCE, checked):
+            case Ok(proposal): expect(proposal.result).to_equal("proposal_pending_review")
+            case Err(reason): fail(reason)
+        expect(proposal_error(learning_prepare_eval_proposal(fixture_learning_scope(), summary, FIXTURE_EVIDENCE,
+            FixtureLearningOwnerV1(allowed: false)))).to_equal("unauthorized")
+        expect(proposal_error(learning_prepare_eval_proposal(fixture_learning_scope(), summary, FIXTURE_EVIDENCE,
+            FixtureLearningOwnerV1(promotion_verified: true, attempt_verified: false)))).to_equal("unverified_attempt_source")
+        expect(proposal_error(learning_prepare_eval_proposal(fixture_learning_scope(), summary, FIXTURE_EVIDENCE,
+            FixtureLearningOwnerV1(promotion_verified: true, trials_verified: false)))).to_equal("unauthenticated_trial")

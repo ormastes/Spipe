@@ -1,0 +1,33 @@
+"""Synthetic local owner integration bindings, never production grants."""
+use std.spec.*
+use lifecycle.operations.local_owner.*
+use .lifecycle_operations_fixtures.*
+use .lifecycle_fixtures.*
+use std.common.debug.contracts_v1.{DebugSessionId}
+use std.nogc_sync_mut.io_runtime.{cwd}
+
+pub val OPERATIONS_LOCAL_FIXTURE_SHA256 = "89e2cbbacd3e31b817a630597f7950091088a8edcc77ff17b6886481048874ba"
+
+pub fn fixture_operations_local_grant(session: DebugSessionId) -> LocalDumpGrantV1:
+    var manifest = fixture_operations_manifest()
+    manifest.content_sha256 = OPERATIONS_LOCAL_FIXTURE_SHA256
+    manifest.byte_length = 148
+    manifest.format = "simple-snapshot"
+    LocalDumpGrantV1(schema: "spipe-local-dump-grant/1", root: cwd() + "/test/fixture/lifecycle",
+        single_leaf: "lifecycle_operations_local_dump.sdn", manifest: manifest, session_id: session,
+        collector_id: "synthetic-public-fixture", collector_sha256: FIXTURE_EXECUTABLE,
+        collection_sha256: FIXTURE_INPUTS, issued_at_ms: 100, expires_at_ms: 200)
+
+pub class FixtureLocalGrantAuthority with LocalDumpGrantAuthorityV1:
+    expected: LocalDumpGrantV1
+    clock_ms: i64 = 150
+    fail_lookup: bool = false
+    fn now_ms() -> i64:
+        if self.fail_lookup: fail("denied scope reached private clock/grant")
+        self.clock_ms
+    fn verify_grant(grant: LocalDumpGrantV1, now_ms: i64) -> bool:
+        if self.fail_lookup: fail("denied scope reached private grant verifier")
+        grant == self.expected and now_ms == self.clock_ms
+
+pub fn fixture_operations_local_authority(grant: LocalDumpGrantV1) -> FixtureLocalGrantAuthority:
+    FixtureLocalGrantAuthority(expected: grant)

@@ -1,0 +1,92 @@
+"""Test-only atomic in-memory owner. No durable storage claim."""
+use lifecycle.contracts.*
+use lifecycle.workflow.store.*
+use lifecycle.workflow.trace.*
+use std.common.traceability.graph_types_v1.*
+use std.common.traceability.envelope_types_v1.{TraceSnapshotV1}
+use .lifecycle_fixtures.*
+
+pub fn workflow_fixture_context() -> WorkflowContextV1:
+    WorkflowContextV1(authority_scope: "fixture-scope", source_revision: FIXTURE_SOURCE,
+        policy_sha256: FIXTURE_DIGEST, now_ms: 150)
+
+pub class WorkflowFixtureStoreV1 with WorkflowStoreV1:
+    run: LifecycleRunV1
+    persisted: [GateEvidenceV1] = []
+    persisted_waivers: [GateWaiverV1] = []
+    allowed: bool = true
+    available: bool = true
+    conflict: bool = false
+    fail_commit: bool = false
+    commit_now_ms: i64 = 150
+
+    fn authorize(context: WorkflowContextV1, run_id: text, operation: text) -> bool:
+        self.allowed and context.authority_scope == "fixture-scope" and run_id == "run-fixture" and
+            (operation == "commit" or operation == "status")
+
+    me load(run_id: text) -> Result<LifecycleRunV1, text>:
+        if not self.allowed: return Err("fixture_lookup_before_authorization")
+        if not self.available: return Err("workflow_store_unavailable")
+        if self.run.run_id != run_id: return Err("workflow_run_missing")
+        Ok(self.run)
+
+    me commit_atomic(commit: WorkflowCommitV1) -> Result<LifecycleRunV1, text>:
+        if not self.available or self.fail_commit: return Err("workflow_store_unavailable")
+        if self.conflict or not workflow_same_run(self.run, commit.previous): return Err("workflow_store_conflict")
+        if commit.authority_scope != "fixture-scope" or commit.context.authority_scope != commit.authority_scope or not workflow_context_matches(commit.context, self.run):
+            return Err("workflow_context_mismatch")
+        if commit.context.now_ms > self.commit_now_ms: return Err("workflow_context_mismatch")
+        if commit.next.generation != self.run.generation + 1 or commit.next.run_id != self.run.run_id or commit.next.source_revision != self.run.source_revision or commit.next.policy_sha256 != self.run.policy_sha256:
+            return Err("workflow_store_conflict")
+        var ids: [text] = []
+        for receipt in self.persisted: ids.push(receipt.evidence_sha256)
+        for waiver in self.persisted_waivers: ids.push(waiver.evidence_sha256)
+        for receipt in commit.receipts:
+            if ids.contains(receipt.evidence_sha256): return Err("workflow_receipt_replay")
+            if receipt.expires_at_ms <= self.commit_now_ms: return Err("invalid_evidence_time")
+            ids.push(receipt.evidence_sha256)
+        for waiver in commit.waivers:
+            if ids.contains(waiver.evidence_sha256): return Err("workflow_receipt_replay")
+            if waiver.expires_at_ms <= self.commit_now_ms: return Err("invalid_evidence_time")
+            ids.push(waiver.evidence_sha256)
+        # All failures precede the single test-memory publication boundary.
+        self.persisted = self.persisted + commit.receipts
+        self.persisted_waivers = self.persisted_waivers + commit.waivers
+        self.run = commit.next
+        Ok(self.run)
+
+pub fn workflow_fixture_graph() -> TraceGraphV1:
+    TraceGraphV1(snapshot: TraceSnapshotV1(id: "snapshot-fixture", kind: "git", complete: true),
+        manifest: TraceGraphManifestV1(input_set_id: "inputs-fixture", extractor_version: "fixture-v1",
+            rules_version: "rules-v1", policy_id: "policy-fixture", complete: true), inputs: [],
+        nodes: [TraceGraphNodeV1(id: "symbol-a", kind: "symbol", title: "A"),
+            TraceGraphNodeV1(id: "symbol-b", kind: "symbol", title: "B")], test_definitions: [],
+        edges: [TraceGraphEdgeV1(id: "edge-a-b", from_id: "symbol-a", relation: "depends_on", to_id: "symbol-b")],
+        edge_origins: [TraceGraphOriginV1(edge_id: "edge-a-b", origin_kind: "explicit", origin_id: "origin-fixture",
+            declaration_path_available: false, declaration_path: "", span_available: false,
+            line: 0, column: 0, extractor_version: "fixture-v1")], locators: [])
+
+pub fn workflow_fixture_query() -> WorkflowTraceQueryV1:
+    WorkflowTraceQueryV1(authority_scope: "fixture-scope", source_revision: FIXTURE_SOURCE,
+        policy_sha256: FIXTURE_DIGEST, node_uid: "symbol-a", relation: "depends_on",
+        direction: "forward", max_results: 10, max_work: 10000)
+
+pub class WorkflowFixtureTraceAuthorityV1 with WorkflowTraceAuthorityV1:
+    allowed: bool = true
+    graph_verified: bool = true
+    edge_verified: bool = true
+    allow_second_edge: bool = false
+    fn authorize(query: WorkflowTraceQueryV1) -> bool:
+        self.allowed and query.authority_scope == "fixture-scope"
+    fn authenticate_graph(graph: TraceGraphV1, query: WorkflowTraceQueryV1) -> bool:
+        self.graph_verified and query.source_revision == FIXTURE_SOURCE and query.policy_sha256 == FIXTURE_DIGEST and
+            graph.snapshot.id == "snapshot-fixture" and graph.manifest.policy_id == "policy-fixture"
+    fn authenticate_edge(graph: TraceGraphV1, edge: TraceGraphEdgeV1, query: WorkflowTraceQueryV1) -> bool:
+        self.edge_verified and edge.from_id == "symbol-a" and edge.relation == "depends_on" and
+            ((edge.id == "edge-a-b" and edge.to_id == "symbol-b") or
+                (self.allow_second_edge and edge.id == "edge-a-c" and edge.to_id == "symbol-c"))
+
+pub fn workflow_fixture_origin(edge_id: text) -> TraceGraphOriginV1:
+    TraceGraphOriginV1(edge_id: edge_id, origin_kind: "explicit", origin_id: "origin-fixture",
+        declaration_path_available: false, declaration_path: "", span_available: false,
+        line: 0, column: 0, extractor_version: "fixture-v1")

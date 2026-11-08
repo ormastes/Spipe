@@ -1,0 +1,52 @@
+"""Authorized workflow transaction boundary. Persistence is a trusted owner port."""
+use lifecycle.contracts.*
+use lifecycle.state.{transition_lifecycle_run}
+
+pub struct WorkflowContextV1:
+    authority_scope: text
+    source_revision: text
+    policy_sha256: text
+    now_ms: i64
+
+pub struct WorkflowCommitV1:
+    context: WorkflowContextV1
+    previous: LifecycleRunV1
+    next: LifecycleRunV1
+    receipts: [GateEvidenceV1]
+    waivers: [GateWaiverV1]
+    authority_scope: text
+
+# Implementations authenticate the complete context, compare the complete old
+# value, reject reused receipt identities, and atomically persist successor and
+# immutable receipts before returning. Recheck expiry with the owner's trusted
+# publication clock and bind context to the authorized session. An overwrite
+# file writer is not this port. Evidence digest alone is not a receipt record ID.
+pub trait WorkflowStoreV1:
+    fn authorize(self, context: WorkflowContextV1, run_id: text, operation: text) -> bool
+    me load(run_id: text) -> Result<LifecycleRunV1, text>
+    me commit_atomic(commit: WorkflowCommitV1) -> Result<LifecycleRunV1, text>
+
+pub fn workflow_context_matches(context: WorkflowContextV1, run: LifecycleRunV1) -> bool:
+    lifecycle_has_text(context.authority_scope) and context.now_ms >= 0 and
+        lifecycle_valid_run(run) and context.source_revision == run.source_revision and
+        context.policy_sha256 == run.policy_sha256
+
+pub fn workflow_same_run(left: LifecycleRunV1, right: LifecycleRunV1) -> bool:
+    left.schema == right.schema and left.run_id == right.run_id and
+        left.source_revision == right.source_revision and left.policy_sha256 == right.policy_sha256 and
+        left.state == right.state and left.generation == right.generation
+
+pub fn commit_workflow_transition(context: WorkflowContextV1, run_id: text,
+    expected_generation: i64, target: text, requirements: [GateRequirementV1],
+    receipts: [GateEvidenceV1], waivers: [GateWaiverV1], authority: LifecycleAuthorityV1,
+    mut store: WorkflowStoreV1) -> Result<LifecycleRunV1, text>:
+    if not store.authorize(context, run_id, "commit"): return Err("workflow_unauthorized")
+    val previous = store.load(run_id)?
+    if previous.run_id != run_id or not workflow_context_matches(context, previous):
+        return Err("workflow_context_mismatch")
+    val next = transition_lifecycle_run(previous, target, expected_generation,
+        requirements, receipts, waivers, authority, context.now_ms)?
+    val committed = store.commit_atomic(WorkflowCommitV1(context: context, previous: previous, next: next,
+        receipts: receipts, waivers: waivers, authority_scope: context.authority_scope))?
+    if not workflow_same_run(committed, next): return Err("workflow_store_conflict")
+    Ok(committed)

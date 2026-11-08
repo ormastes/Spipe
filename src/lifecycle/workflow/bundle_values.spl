@@ -1,0 +1,175 @@
+"""Typed full-fidelity bundle values over the host SDN representation."""
+use lifecycle.contracts.*
+use lifecycle.workflow.store.*
+use std.common.sdn.value.{SdnValue}
+
+pub fn workflow_sdn_object(value: SdnValue, keys: [text]) -> Result<Dict<text, SdnValue>, text>:
+    match value:
+        case Dict(fields):
+            if fields.len() != keys.len(): return Err("workflow_bundle_fields")
+            for key in keys:
+                if not fields.contains_key(key): return Err("workflow_bundle_fields")
+            Ok(fields)
+        case _: Err("workflow_bundle_type")
+
+pub fn workflow_sdn_text(value: SdnValue) -> Result<text, text>:
+    match value:
+        case String(content):
+            if content.len() > 4096: return Err("workflow_bundle_text_quota")
+            Ok(content)
+        case _: Err("workflow_bundle_type")
+
+pub fn workflow_sdn_integer(value: SdnValue) -> Result<i64, text>:
+    match value:
+        case Int(number):
+            if number < 0: return Err("workflow_bundle_negative")
+            Ok(number)
+        case _: Err("workflow_bundle_type")
+
+pub fn workflow_run_value(value: LifecycleRunV1) -> SdnValue:
+    var fields: Dict<text, SdnValue> = {}
+    fields["schema"] = SdnValue.String(value.schema)
+    fields["run_id"] = SdnValue.String(value.run_id)
+    fields["source_revision"] = SdnValue.String(value.source_revision)
+    fields["policy_sha256"] = SdnValue.String(value.policy_sha256)
+    fields["state"] = SdnValue.String(value.state)
+    fields["generation"] = SdnValue.Int(value.generation)
+    SdnValue.Dict(fields)
+
+pub fn workflow_run_decode(value: SdnValue) -> Result<LifecycleRunV1, text>:
+    val fields = workflow_sdn_object(value, ["schema", "run_id", "source_revision", "policy_sha256", "state", "generation"])?
+    val record_schema = workflow_sdn_text(fields["schema"])?
+    val run_id = workflow_sdn_text(fields["run_id"])?
+    val source_revision = workflow_sdn_text(fields["source_revision"])?
+    val policy_sha256 = workflow_sdn_text(fields["policy_sha256"])?
+    val state = workflow_sdn_text(fields["state"])?
+    val generation = workflow_sdn_integer(fields["generation"])?
+    if record_schema != "spipe-lifecycle-run/1": return Err("workflow_bundle_schema")
+    if not lifecycle_revision(source_revision): return Err("workflow_bundle_revision")
+    if not lifecycle_hex(policy_sha256, 64): return Err("workflow_bundle_digest")
+    val decoded = LifecycleRunV1(schema: record_schema, run_id: run_id, source_revision: source_revision, policy_sha256: policy_sha256, state: state, generation: generation)
+    if not lifecycle_valid_run(decoded): return Err("workflow_bundle_run")
+    Ok(decoded)
+
+pub fn workflow_context_value(value: WorkflowContextV1) -> SdnValue:
+    var fields: Dict<text, SdnValue> = {}
+    fields["authority_scope"] = SdnValue.String(value.authority_scope)
+    fields["source_revision"] = SdnValue.String(value.source_revision)
+    fields["policy_sha256"] = SdnValue.String(value.policy_sha256)
+    fields["now_ms"] = SdnValue.Int(value.now_ms)
+    SdnValue.Dict(fields)
+
+pub fn workflow_context_decode(value: SdnValue) -> Result<WorkflowContextV1, text>:
+    val fields = workflow_sdn_object(value, ["authority_scope", "source_revision", "policy_sha256", "now_ms"])?
+    val authority_scope = workflow_sdn_text(fields["authority_scope"])?
+    val source_revision = workflow_sdn_text(fields["source_revision"])?
+    val policy_sha256 = workflow_sdn_text(fields["policy_sha256"])?
+    val now_ms = workflow_sdn_integer(fields["now_ms"])?
+    if not lifecycle_revision(source_revision): return Err("workflow_bundle_revision")
+    if not lifecycle_hex(policy_sha256, 64): return Err("workflow_bundle_digest")
+    val decoded = WorkflowContextV1(authority_scope: authority_scope, source_revision: source_revision, policy_sha256: policy_sha256, now_ms: now_ms)
+    if not lifecycle_has_text(decoded.authority_scope): return Err("workflow_bundle_scope")
+    Ok(decoded)
+
+pub fn workflow_evidence_value(value: GateEvidenceV1) -> SdnValue:
+    var fields: Dict<text, SdnValue> = {}
+    fields["schema"] = SdnValue.String(value.schema)
+    fields["run_id"] = SdnValue.String(value.run_id)
+    fields["run_generation"] = SdnValue.Int(value.run_generation)
+    fields["gate_id"] = SdnValue.String(value.gate_id)
+    fields["source_revision"] = SdnValue.String(value.source_revision)
+    fields["policy_sha256"] = SdnValue.String(value.policy_sha256)
+    fields["executable_sha256"] = SdnValue.String(value.executable_sha256)
+    fields["selector"] = SdnValue.String(value.selector)
+    fields["inputs_sha256"] = SdnValue.String(value.inputs_sha256)
+    fields["evidence_sha256"] = SdnValue.String(value.evidence_sha256)
+    fields["outcome"] = SdnValue.String(value.outcome)
+    fields["executed_cases"] = SdnValue.Int(value.executed_cases)
+    fields["failed_cases"] = SdnValue.Int(value.failed_cases)
+    fields["negative_cases"] = SdnValue.Int(value.negative_cases)
+    fields["negative_failed_cases"] = SdnValue.Int(value.negative_failed_cases)
+    fields["rationale"] = SdnValue.String(value.rationale)
+    fields["issued_at_ms"] = SdnValue.Int(value.issued_at_ms)
+    fields["expires_at_ms"] = SdnValue.Int(value.expires_at_ms)
+    SdnValue.Dict(fields)
+
+pub fn workflow_evidence_decode(value: SdnValue) -> Result<GateEvidenceV1, text>:
+    val fields = workflow_sdn_object(value, ["schema", "run_id", "run_generation", "gate_id", "source_revision", "policy_sha256", "executable_sha256", "selector", "inputs_sha256", "evidence_sha256", "outcome", "executed_cases", "failed_cases", "negative_cases", "negative_failed_cases", "rationale", "issued_at_ms", "expires_at_ms"])?
+    val record_schema = workflow_sdn_text(fields["schema"])?
+    val run_id = workflow_sdn_text(fields["run_id"])?
+    val run_generation = workflow_sdn_integer(fields["run_generation"])?
+    val gate_id = workflow_sdn_text(fields["gate_id"])?
+    val source_revision = workflow_sdn_text(fields["source_revision"])?
+    val policy_sha256 = workflow_sdn_text(fields["policy_sha256"])?
+    val executable_sha256 = workflow_sdn_text(fields["executable_sha256"])?
+    val selector = workflow_sdn_text(fields["selector"])?
+    val inputs_sha256 = workflow_sdn_text(fields["inputs_sha256"])?
+    val evidence_sha256 = workflow_sdn_text(fields["evidence_sha256"])?
+    val outcome = workflow_sdn_text(fields["outcome"])?
+    val executed_cases = workflow_sdn_integer(fields["executed_cases"])?
+    val failed_cases = workflow_sdn_integer(fields["failed_cases"])?
+    val negative_cases = workflow_sdn_integer(fields["negative_cases"])?
+    val negative_failed_cases = workflow_sdn_integer(fields["negative_failed_cases"])?
+    val rationale = workflow_sdn_text(fields["rationale"])?
+    val issued_at_ms = workflow_sdn_integer(fields["issued_at_ms"])?
+    val expires_at_ms = workflow_sdn_integer(fields["expires_at_ms"])?
+    if record_schema != "spipe-lifecycle-evidence/1": return Err("workflow_bundle_schema")
+    if not lifecycle_revision(source_revision): return Err("workflow_bundle_revision")
+    if not lifecycle_hex(policy_sha256, 64): return Err("workflow_bundle_digest")
+    if not lifecycle_hex(executable_sha256, 64): return Err("workflow_bundle_digest")
+    if not lifecycle_hex(inputs_sha256, 64): return Err("workflow_bundle_digest")
+    if not lifecycle_hex(evidence_sha256, 64): return Err("workflow_bundle_digest")
+    val decoded = GateEvidenceV1(schema: record_schema, run_id: run_id, run_generation: run_generation, gate_id: gate_id, source_revision: source_revision, policy_sha256: policy_sha256, executable_sha256: executable_sha256, selector: selector, inputs_sha256: inputs_sha256, evidence_sha256: evidence_sha256, outcome: outcome, executed_cases: executed_cases, failed_cases: failed_cases, negative_cases: negative_cases, negative_failed_cases: negative_failed_cases, rationale: rationale, issued_at_ms: issued_at_ms, expires_at_ms: expires_at_ms)
+    if not ["pass", "red", "fail", "not_run", "not_applicable"].contains(decoded.outcome): return Err("workflow_bundle_outcome")
+    if decoded.failed_cases > decoded.executed_cases or decoded.negative_cases > decoded.executed_cases or decoded.negative_failed_cases > decoded.negative_cases or decoded.negative_failed_cases > decoded.failed_cases: return Err("workflow_bundle_counts")
+    if decoded.failed_cases - decoded.negative_failed_cases > decoded.executed_cases - decoded.negative_cases: return Err("workflow_bundle_counts")
+    if not lifecycle_has_text(decoded.run_id) or not lifecycle_has_text(decoded.gate_id) or not lifecycle_has_text(decoded.selector) or decoded.expires_at_ms <= decoded.issued_at_ms: return Err("workflow_bundle_evidence")
+    Ok(decoded)
+
+pub fn workflow_waiver_value(value: GateWaiverV1) -> SdnValue:
+    var fields: Dict<text, SdnValue> = {}
+    fields["schema"] = SdnValue.String(value.schema)
+    fields["run_id"] = SdnValue.String(value.run_id)
+    fields["run_generation"] = SdnValue.Int(value.run_generation)
+    fields["gate_id"] = SdnValue.String(value.gate_id)
+    fields["source_revision"] = SdnValue.String(value.source_revision)
+    fields["policy_sha256"] = SdnValue.String(value.policy_sha256)
+    fields["executable_sha256"] = SdnValue.String(value.executable_sha256)
+    fields["selector"] = SdnValue.String(value.selector)
+    fields["inputs_sha256"] = SdnValue.String(value.inputs_sha256)
+    fields["authority_id"] = SdnValue.String(value.authority_id)
+    fields["reviewer_id"] = SdnValue.String(value.reviewer_id)
+    fields["reason"] = SdnValue.String(value.reason)
+    fields["compensating_control"] = SdnValue.String(value.compensating_control)
+    fields["evidence_sha256"] = SdnValue.String(value.evidence_sha256)
+    fields["issued_at_ms"] = SdnValue.Int(value.issued_at_ms)
+    fields["expires_at_ms"] = SdnValue.Int(value.expires_at_ms)
+    SdnValue.Dict(fields)
+
+pub fn workflow_waiver_decode(value: SdnValue) -> Result<GateWaiverV1, text>:
+    val fields = workflow_sdn_object(value, ["schema", "run_id", "run_generation", "gate_id", "source_revision", "policy_sha256", "executable_sha256", "selector", "inputs_sha256", "authority_id", "reviewer_id", "reason", "compensating_control", "evidence_sha256", "issued_at_ms", "expires_at_ms"])?
+    val record_schema = workflow_sdn_text(fields["schema"])?
+    val run_id = workflow_sdn_text(fields["run_id"])?
+    val run_generation = workflow_sdn_integer(fields["run_generation"])?
+    val gate_id = workflow_sdn_text(fields["gate_id"])?
+    val source_revision = workflow_sdn_text(fields["source_revision"])?
+    val policy_sha256 = workflow_sdn_text(fields["policy_sha256"])?
+    val executable_sha256 = workflow_sdn_text(fields["executable_sha256"])?
+    val selector = workflow_sdn_text(fields["selector"])?
+    val inputs_sha256 = workflow_sdn_text(fields["inputs_sha256"])?
+    val authority_id = workflow_sdn_text(fields["authority_id"])?
+    val reviewer_id = workflow_sdn_text(fields["reviewer_id"])?
+    val reason = workflow_sdn_text(fields["reason"])?
+    val compensating_control = workflow_sdn_text(fields["compensating_control"])?
+    val evidence_sha256 = workflow_sdn_text(fields["evidence_sha256"])?
+    val issued_at_ms = workflow_sdn_integer(fields["issued_at_ms"])?
+    val expires_at_ms = workflow_sdn_integer(fields["expires_at_ms"])?
+    if record_schema != "spipe-lifecycle-waiver/1": return Err("workflow_bundle_schema")
+    if not lifecycle_revision(source_revision): return Err("workflow_bundle_revision")
+    if not lifecycle_hex(policy_sha256, 64): return Err("workflow_bundle_digest")
+    if not lifecycle_hex(executable_sha256, 64): return Err("workflow_bundle_digest")
+    if not lifecycle_hex(inputs_sha256, 64): return Err("workflow_bundle_digest")
+    if not lifecycle_hex(evidence_sha256, 64): return Err("workflow_bundle_digest")
+    val decoded = GateWaiverV1(schema: record_schema, run_id: run_id, run_generation: run_generation, gate_id: gate_id, source_revision: source_revision, policy_sha256: policy_sha256, executable_sha256: executable_sha256, selector: selector, inputs_sha256: inputs_sha256, authority_id: authority_id, reviewer_id: reviewer_id, reason: reason, compensating_control: compensating_control, evidence_sha256: evidence_sha256, issued_at_ms: issued_at_ms, expires_at_ms: expires_at_ms)
+    if not lifecycle_has_text(decoded.run_id) or not lifecycle_has_text(decoded.gate_id) or not lifecycle_has_text(decoded.selector) or not lifecycle_has_text(decoded.authority_id) or not lifecycle_has_text(decoded.reviewer_id) or not lifecycle_has_text(decoded.reason) or not lifecycle_has_text(decoded.compensating_control) or decoded.expires_at_ms <= decoded.issued_at_ms: return Err("workflow_bundle_waiver")
+    Ok(decoded)

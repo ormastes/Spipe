@@ -1,0 +1,61 @@
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_hex, lifecycle_revision}
+use .contracts.*
+
+pub fn learning_scope_valid(scope: LearningScopeV1) -> bool:
+    lifecycle_has_text(scope.scope_uid) and lifecycle_revision(scope.source_revision) and lifecycle_hex(scope.policy_sha256, 64)
+
+pub fn learning_same_scope(a: LearningScopeV1, b: LearningScopeV1) -> bool:
+    a.scope_uid == b.scope_uid and a.source_revision == b.source_revision and a.policy_sha256 == b.policy_sha256
+
+pub fn learning_decision(outcome: text, reason: text) -> LearningDecisionV1:
+    LearningDecisionV1(outcome: outcome, reason: reason, evidence_sha256: "")
+
+pub fn learning_claim_valid(scope: LearningScopeV1, claim: KnowledgeClaimV1) -> bool:
+    learning_same_scope(scope, claim.scope) and lifecycle_has_text(claim.uid) and
+        lifecycle_hex(claim.content_sha256, 64) and lifecycle_has_text(claim.origin_uid) and
+        lifecycle_revision(claim.origin_revision) and lifecycle_hex(claim.origin_sha256, 64)
+
+pub fn learning_default_claims(scope: LearningScopeV1, owner: LearningOwnerV1) -> [KnowledgeClaimV1]:
+    var result: [KnowledgeClaimV1] = []
+    if not learning_scope_valid(scope): return result
+    if not owner.authorize(scope, "knowledge.read"): return result
+    val records = owner.claims(scope)
+    if records.len() > 4096: return []
+    for claim in records:
+        if not owner.authorize(scope, "knowledge.read"): return []
+        if learning_claim_valid(scope, claim) and claim.status == "active" and claim.canonical_uid == "":
+            result.push(claim)
+    result
+
+pub fn learning_review_claim(scope: LearningScopeV1, claim: KnowledgeClaimV1, review: ClaimReviewV1, owner: LearningOwnerV1) -> LearningDecisionV1:
+    if not learning_scope_valid(scope): return learning_decision("FAIL", "invalid_scope")
+    if not owner.authorize(scope, "knowledge.review"): return learning_decision("BLOCKED", "unauthorized")
+    if not learning_claim_valid(scope, claim): return learning_decision("FAIL", "invalid_claim")
+    if review.claim_uid != claim.uid or review.expected_content_sha256 != claim.content_sha256:
+        return learning_decision("FAIL", "stale_review")
+    if not lifecycle_has_text(review.reviewer) or not lifecycle_hex(review.evidence_sha256, 64):
+        return learning_decision("FAIL", "invalid_review")
+    if claim.status != "active" and claim.status != "needs_review": return learning_decision("FAIL", "inactive_claim")
+    if review.decision != "archive" and review.decision != "alias" and review.decision != "approve":
+        return learning_decision("FAIL", "invalid_decision")
+    if review.decision != "alias" and review.replacement_uid != "": return learning_decision("FAIL", "unexpected_replacement")
+    if not owner.authorize(scope, "knowledge.review"): return learning_decision("BLOCKED", "revoked")
+    if not owner.verify_review(scope, claim, review): return learning_decision("FAIL", "unverified_review")
+    var expected_target: KnowledgeClaimV1? = nil
+    if review.decision == "alias":
+        if review.replacement_uid == claim.uid or not lifecycle_has_text(review.replacement_uid):
+            return learning_decision("FAIL", "invalid_alias")
+        if not owner.authorize(scope, "knowledge.read"): return learning_decision("BLOCKED", "unauthorized_alias_lookup")
+        val targets = owner.claims(scope)
+        if targets.len() > 4096: return learning_decision("FAIL", "claim_budget_exceeded")
+        var matches = 0
+        for target in targets:
+            if target.uid == review.replacement_uid:
+                if not learning_claim_valid(scope, target) or target.status != "active" or target.canonical_uid != "":
+                    return learning_decision("FAIL", "invalid_alias_target")
+                matches = matches + 1
+                expected_target = target
+        if matches != 1: return learning_decision("FAIL", "missing_or_ambiguous_alias_target")
+    if not owner.authorize(scope, "knowledge.review"): return learning_decision("BLOCKED", "revoked")
+    if not owner.commit_review(scope, claim, review, expected_target): return learning_decision("FAIL", "stale_or_rejected_commit")
+    LearningDecisionV1(outcome: "PASS", reason: "review_committed", evidence_sha256: review.evidence_sha256)

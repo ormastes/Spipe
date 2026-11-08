@@ -1,0 +1,159 @@
+"""Trusted local composition using retained host owners; no path fallback/cache."""
+use .contracts.{DumpManifestV1, DumpSliceV1, DumpOwnerPortV1, IncidentAuthorityV1,
+    OfflineDebugRequestV1, OfflineDebugResultV1, OfflineDebugPortV1}
+use .dump.{valid_dump_manifest, load_dump_slice, OPERATIONS_MAX_SLICE_BYTES}
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_hex, lifecycle_valid_time}
+use std.common.crypto.sha256.{sha256_u8_hex}
+use std.nogc_sync_mut.io.retained_file.{retained_directory_open_trusted_v1}
+use std.common.debug.contracts_v1.{DebugSessionId, DebugRootOperationV1, DebugPerturbationV1}
+use std.common.debug.service_v1.{central_debug_service_v1_authorize, central_debug_service_v1_record_outcome}
+
+# Private root and leaf are never in a public dump manifest or request decoder.
+pub struct LocalDumpGrantV1:
+    schema: text
+    root: text
+    single_leaf: text
+    manifest: DumpManifestV1
+    session_id: DebugSessionId
+    collector_id: text
+    collector_sha256: text
+    collection_sha256: text
+    issued_at_ms: i64
+    expires_at_ms: i64
+
+pub trait LocalDumpGrantAuthorityV1:
+    # Trusted live clock, not request/cached time. Reject unavailable clocks.
+    fn now_ms(self) -> i64
+    # Authenticate COMPLETE grant: root ownership, exact manifest, collection
+    # provenance/collector identity, and session binding to executable digest.
+    # Mere existence of an Inspect session is insufficient. Not deserializable.
+    fn verify_grant(self, grant: LocalDumpGrantV1, now_ms: i64) -> bool
+
+pub fn valid_local_dump_leaf(value: text) -> bool:
+    if value.len() == 0 or value.len() > 255 or value == "." or value == "..": return false
+    for index in 0..value.len():
+        val byte = value.byte_at(index)
+        if not ((byte >= 48 and byte <= 57) or (byte >= 65 and byte <= 90) or
+            (byte >= 97 and byte <= 122) or byte == 45 or byte == 46 or byte == 95): return false
+    true
+
+pub class LocalDumpOwnerV1 with DumpOwnerPortV1:
+    grant: LocalDumpGrantV1
+    incident_authority: IncidentAuthorityV1
+    grant_authority: LocalDumpGrantAuthorityV1
+
+    fn authorize_dump(scope_id: text, incident_id: text, dump_id: text, operation: text) -> bool:
+        # Scope authority precedes grant verification, clock, debug registry,
+        # filesystem and all private owner/cache access.
+        if not self.incident_authority.authorize_incident(scope_id, incident_id, "dump." + operation): return false
+        if scope_id != self.grant.manifest.scope_id or incident_id != self.grant.manifest.incident_id: return false
+        if operation != "read" and operation != "catalog": return false
+        if operation == "catalog" and dump_id != "": return false
+        if operation == "read" and dump_id != self.grant.manifest.dump_id: return false
+        val now = self.grant_authority.now_ms()
+        if not lifecycle_valid_time(self.grant.issued_at_ms, self.grant.expires_at_ms, now): return false
+        if not self.grant_authority.verify_grant(self.grant, now): return false
+        if (self.grant.schema != "spipe-local-dump-grant/1" or not valid_dump_manifest(self.grant.manifest) or
+            not valid_local_dump_leaf(self.grant.single_leaf) or not lifecycle_has_text(self.grant.root) or
+            not lifecycle_has_text(self.grant.collector_id) or not lifecycle_hex(self.grant.collector_sha256, 64) or
+            self.grant.collection_sha256 != self.grant.manifest.collection_sha256 or
+            self.grant.manifest.byte_length > OPERATIONS_MAX_SLICE_BYTES): return false
+        val receipt = central_debug_service_v1_authorize(self.grant.session_id,
+            DebugRootOperationV1.Inspect, DebugPerturbationV1.Passive, "lifecycle.dump." + operation)
+        receipt.allowed
+
+    fn catalog(scope_id: text, incident_id: text, maximum_items: i64) -> Result<[DumpManifestV1], text>:
+        if not self.authorize_dump(scope_id, incident_id, "", "catalog"): return Err("unauthorized_dump_scope")
+        if maximum_items < 1 or maximum_items > 64: return Err("dump_quota_exceeded")
+        Ok([self.grant.manifest])
+
+    fn verify_manifest(manifest: DumpManifestV1) -> bool:
+        self.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read") and manifest == self.grant.manifest
+
+    # Public only for test/adapter composition; it repeats authority on every
+    # invocation and never exposes an unchecked private root or owner handle.
+    pub fn read_authenticated_bytes() -> Result<[u8], text>:
+        val manifest = self.grant.manifest
+        if not self.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+            return Err("unauthorized_dump_scope")
+        var directory = retained_directory_open_trusted_v1(self.grant.root)?
+        val opened = directory.open_file(self.grant.single_leaf, OPERATIONS_MAX_SLICE_BYTES as u64)
+        match opened:
+            case Err(reason):
+                val closed = directory.close()
+                if not closed: return Err("local_dump_close_failed")
+                return Err(reason)
+            case Ok(file_owner):
+                var file = file_owner
+                val result = file.read_all_bounded_v1(OPERATIONS_MAX_SLICE_BYTES)
+                val file_closed = file.close()
+                val directory_closed = directory.close()
+                if not file_closed or not directory_closed: return Err("local_dump_close_failed")
+                match result:
+                    case Err(reason):
+                        val outcome = central_debug_service_v1_record_outcome(self.grant.session_id,
+                            DebugRootOperationV1.Inspect, DebugPerturbationV1.Passive,
+                            "lifecycle.dump.read.outcome", false, false, "retained read failed; payload withheld")
+                        return Err(reason)
+                    case Ok(bytes):
+                        if not self.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+                            return Err("unauthorized_dump_scope")
+                        val valid = bytes.len() == manifest.byte_length and sha256_u8_hex(bytes) == manifest.content_sha256
+                        val outcome = central_debug_service_v1_record_outcome(self.grant.session_id,
+                            DebugRootOperationV1.Inspect, DebugPerturbationV1.Passive,
+                            "lifecycle.dump.read.outcome", valid, false, "local immutable digest checked; payload withheld")
+                        if not valid: return Err("dump_digest_mismatch")
+                        return Ok(bytes)
+
+    fn read_slice(manifest: DumpManifestV1, offset: i64, maximum_bytes: i64) -> Result<DumpSliceV1, text>:
+        if not self.verify_manifest(manifest): return Err("invalid_dump_manifest")
+        if offset < 0 or maximum_bytes < 1 or maximum_bytes > OPERATIONS_MAX_SLICE_BYTES or offset >= manifest.byte_length:
+            return Err("dump_quota_exceeded")
+        if maximum_bytes > manifest.byte_length - offset: return Err("dump_quota_exceeded")
+        val bytes = self.read_authenticated_bytes()?
+        var selected: [u8] = []
+        for index in offset..(offset + maximum_bytes): selected.push(bytes[index])
+        Ok(DumpSliceV1(dump_id: manifest.dump_id, offset: offset, bytes: selected, content_sha256: sha256_u8_hex(selected)))
+
+    fn verify_slice(manifest: DumpManifestV1, slice: DumpSliceV1) -> bool:
+        if not self.verify_manifest(manifest) or slice.dump_id != manifest.dump_id or slice.offset < 0: return false
+        if slice.offset >= manifest.byte_length or slice.bytes.len() == 0 or slice.bytes.len() > manifest.byte_length - slice.offset: return false
+        match self.read_authenticated_bytes():
+            case Err(_): false
+            case Ok(bytes):
+                for index in 0..slice.bytes.len():
+                    if bytes[slice.offset + index] != slice.bytes[index]: return false
+                sha256_u8_hex(slice.bytes) == slice.content_sha256
+
+pub fn load_local_dump_slice(grant: LocalDumpGrantV1, offset: i64, maximum_bytes: i64,
+    incident_authority: IncidentAuthorityV1, grant_authority: LocalDumpGrantAuthorityV1) -> Result<DumpSliceV1, text>:
+    val owner = LocalDumpOwnerV1(grant: grant, incident_authority: incident_authority, grant_authority: grant_authority)
+    load_dump_slice(grant.manifest, offset, maximum_bytes, owner)
+
+# Metadata-only local capability. This does not decode a core/minidump or
+# produce stack frames. Result verification performs a second fresh read.
+pub class LocalOfflineSummaryOwnerV1 with OfflineDebugPortV1:
+    owner: LocalDumpOwnerV1
+
+    fn authorize_query(request: OfflineDebugRequestV1) -> bool:
+        if not self.owner.authorize_dump(request.scope_id, request.incident_id, request.manifest.dump_id, "read"):
+            return false
+        request.manifest == self.owner.grant.manifest
+
+    fn query(request: OfflineDebugRequestV1) -> Result<OfflineDebugResultV1, text>:
+        if not self.authorize_query(request): return Err("unauthorized_dump_scope")
+        if request.query != "summary": return Err("unsupported_offline_adapter")
+        if request.maximum_bytes < 1 or request.maximum_bytes > OPERATIONS_MAX_SLICE_BYTES: return Err("dump_quota_exceeded")
+        val bytes = self.owner.read_authenticated_bytes()?
+        val manifest = request.manifest
+        val summary = "verified local metadata; source=" + manifest.source_revision +
+            "; executable=" + manifest.executable_sha256 + "; collection=" + manifest.collection_sha256 +
+            "; bytes=" + str(bytes.len()) + "; sha256=" + manifest.content_sha256
+        if summary.bytes().len() > request.maximum_bytes: return Err("dump_quota_exceeded")
+        Ok(OfflineDebugResultV1(source_revision: manifest.source_revision, dump_sha256: manifest.content_sha256,
+            adapter_id: "retained-local-metadata/1", evidence_sha256: sha256_u8_hex(summary.bytes()), summary: summary))
+
+    fn verify_result(request: OfflineDebugRequestV1, result: OfflineDebugResultV1) -> bool:
+        match self.query(request):
+            case Err(_): false
+            case Ok(verified): result == verified

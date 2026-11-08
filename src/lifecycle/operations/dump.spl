@@ -1,0 +1,73 @@
+"""Authorization precedes discovery, manifest authentication and slice reads."""
+use .contracts.{DumpManifestV1, DumpSliceV1, DumpOwnerPortV1}
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_hex, lifecycle_revision}
+use std.common.crypto.sha256.{sha256_u8_hex}
+
+# Structural safety ceilings, not measured performance admission thresholds.
+pub val OPERATIONS_MAX_CATALOG = 64
+pub val OPERATIONS_MAX_SLICE_BYTES = 1048576
+
+pub fn valid_dump_manifest(manifest: DumpManifestV1) -> bool:
+    manifest.schema == "spipe-dump-manifest/1" and lifecycle_has_text(manifest.dump_id) and
+        lifecycle_has_text(manifest.incident_id) and lifecycle_has_text(manifest.scope_id) and
+        lifecycle_revision(manifest.source_revision) and lifecycle_hex(manifest.content_sha256, 64) and
+        lifecycle_hex(manifest.executable_sha256, 64) and lifecycle_hex(manifest.collection_sha256, 64) and
+        manifest.byte_length > 0 and manifest.collected_at_ms >= 0 and
+        ["restricted", "sanitized"].contains(manifest.access_class) and
+        ["core", "minidump", "simple-snapshot"].contains(manifest.format) and
+        ["none", "partial", "unknown"].contains(manifest.collection_loss) and
+        ["unredacted", "redacted", "unknown"].contains(manifest.redaction_state)
+
+pub fn catalog_dumps(scope_id: text, incident_id: text, maximum_items: i64,
+    port: DumpOwnerPortV1) -> Result<[DumpManifestV1], text>:
+    if not port.authorize_dump(scope_id, incident_id, "", "catalog"): return Err("unauthorized_dump_scope")
+    if not lifecycle_has_text(scope_id) or not lifecycle_has_text(incident_id): return Err("dump_scope_mismatch")
+    if maximum_items <= 0 or maximum_items > OPERATIONS_MAX_CATALOG: return Err("dump_quota_exceeded")
+    val manifests = port.catalog(scope_id, incident_id, maximum_items)?
+    if not port.authorize_dump(scope_id, incident_id, "", "catalog"): return Err("unauthorized_dump_scope")
+    if manifests.len() > maximum_items: return Err("dump_quota_exceeded")
+    var seen: [text] = []
+    for manifest in manifests:
+        if manifest.scope_id != scope_id or manifest.incident_id != incident_id: return Err("dump_scope_mismatch")
+        if not valid_dump_manifest(manifest) or seen.contains(manifest.dump_id): return Err("invalid_dump_manifest")
+        # Each record needs its own authority before private owner verification.
+        if not port.authorize_dump(scope_id, incident_id, manifest.dump_id, "read"): return Err("unauthorized_dump_scope")
+        val verified = port.verify_manifest(manifest)
+        if not port.authorize_dump(scope_id, incident_id, manifest.dump_id, "read"): return Err("unauthorized_dump_scope")
+        if not verified: return Err("invalid_dump_manifest")
+        seen.push(manifest.dump_id)
+    if not port.authorize_dump(scope_id, incident_id, "", "catalog"): return Err("unauthorized_dump_scope")
+    Ok(manifests)
+
+pub fn load_dump_slice(manifest: DumpManifestV1, offset: i64, maximum_bytes: i64,
+    port: DumpOwnerPortV1) -> Result<DumpSliceV1, text>:
+    if not port.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+        return Err("unauthorized_dump_scope")
+    if not valid_dump_manifest(manifest): return Err("invalid_dump_manifest")
+    if maximum_bytes <= 0 or maximum_bytes > OPERATIONS_MAX_SLICE_BYTES or offset < 0 or offset >= manifest.byte_length:
+        return Err("dump_quota_exceeded")
+    if not port.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+        return Err("unauthorized_dump_scope")
+    val manifest_verified = port.verify_manifest(manifest)
+    if not port.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+        return Err("unauthorized_dump_scope")
+    if not manifest_verified: return Err("invalid_dump_manifest")
+    val remaining = manifest.byte_length - offset
+    var requested = maximum_bytes
+    if requested > remaining: requested = remaining
+    val slice = port.read_slice(manifest, offset, requested)?
+    if not port.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+        return Err("unauthorized_dump_scope")
+    if slice.dump_id != manifest.dump_id or slice.offset != offset: return Err("dump_scope_mismatch")
+    if slice.bytes.len() != requested: return Err("dump_quota_exceeded")
+    if not lifecycle_hex(slice.content_sha256, 64) or sha256_u8_hex(slice.bytes) != slice.content_sha256:
+        return Err("dump_digest_mismatch")
+    if offset == 0 and requested == manifest.byte_length and slice.content_sha256 != manifest.content_sha256:
+        return Err("dump_digest_mismatch")
+    if not port.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+        return Err("unauthorized_dump_scope")
+    val slice_verified = port.verify_slice(manifest, slice)
+    if not port.authorize_dump(manifest.scope_id, manifest.incident_id, manifest.dump_id, "read"):
+        return Err("unauthorized_dump_scope")
+    if not slice_verified: return Err("dump_digest_mismatch")
+    Ok(slice)

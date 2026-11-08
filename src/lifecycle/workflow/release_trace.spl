@@ -1,0 +1,130 @@
+"""Authenticated release companion over the unchanged closed host graph schema."""
+use lifecycle.contracts.{lifecycle_has_text, lifecycle_hex, lifecycle_revision}
+use std.common.traceability.graph_types_v1.*
+use std.common.traceability.graph_schema_v1.{trace_graph_validate_v1}
+
+pub struct WorkflowReleaseLinkV1:
+    schema: text
+    uid: text
+    run_id: text
+    authority_scope: text
+    source_revision: text
+    policy_sha256: text
+    graph_snapshot_id: text
+    requirement_uid: text
+    criterion_uid: text
+    symbol_uid: text
+    test_uid: text
+    observation_uid: text
+    evidence_uid: text
+    build_sha256: text
+    verification_sha256: text
+    release_sha256: text
+    release_revision: text
+    executable_sha256: text
+    input_sha256: text
+
+pub trait WorkflowReleaseTraceAuthorityV1:
+    fn authorize(self, scope: text, run_id: text) -> bool
+    fn authenticate(self, link: WorkflowReleaseLinkV1, graph: TraceGraphV1) -> bool
+
+pub struct WorkflowReleaseTraceQueryV1:
+    authority_scope: text
+    run_id: text
+    source_revision: text
+    policy_sha256: text
+    entity_kind: text
+    identity: text
+    direction: text
+    max_results: i64
+    max_work: i64
+
+fn release_trace_kind(graph: TraceGraphV1, uid: text) -> text:
+    for node in graph.nodes:
+        if node.id == uid: return node.kind
+    ""
+
+fn release_trace_edge(graph: TraceGraphV1, from_uid: text, relation: text, to_uid: text) -> bool:
+    for edge in graph.edges:
+        if edge.from_id == from_uid and edge.relation == relation and edge.to_id == to_uid: return true
+    false
+
+fn release_trace_checked(graph: TraceGraphV1, link: WorkflowReleaseLinkV1,
+    authority: WorkflowReleaseTraceAuthorityV1) -> Result<bool, text>:
+    if link.schema != "spipe-workflow-release-link/1": return Err("workflow_release_schema")
+    for identity in [link.uid, link.run_id, link.authority_scope, link.graph_snapshot_id,
+        link.requirement_uid, link.criterion_uid, link.symbol_uid, link.test_uid, link.observation_uid, link.evidence_uid]:
+        if not lifecycle_has_text(identity): return Err("workflow_release_identity")
+    for digest in [link.policy_sha256, link.build_sha256, link.verification_sha256,
+        link.release_sha256, link.executable_sha256, link.input_sha256]:
+        if not lifecycle_hex(digest, 64): return Err("workflow_release_digest")
+    if not lifecycle_revision(link.source_revision) or link.release_revision != link.source_revision:
+        return Err("workflow_release_revision")
+    if link.graph_snapshot_id != graph.snapshot.id or not graph.snapshot.complete or not graph.manifest.complete:
+        return Err("workflow_release_snapshot")
+    val test_kind = release_trace_kind(graph, link.test_uid)
+    if release_trace_kind(graph, link.requirement_uid) != "requirement" or release_trace_kind(graph, link.criterion_uid) != "criterion" or
+        release_trace_kind(graph, link.symbol_uid) != "symbol" or not ["test_case", "parameterized_case"].contains(test_kind) or
+        release_trace_kind(graph, link.observation_uid) != "observation" or release_trace_kind(graph, link.evidence_uid) != "evidence_artifact":
+        return Err("workflow_release_node_kind")
+    if not release_trace_edge(graph, link.requirement_uid, "decomposes_to", link.criterion_uid) or
+        not release_trace_edge(graph, link.criterion_uid, "accepted_by", link.test_uid) or
+        not release_trace_edge(graph, link.test_uid, "targets", link.symbol_uid) or
+        not release_trace_edge(graph, link.test_uid, "observed_in", link.observation_uid) or
+        not release_trace_edge(graph, link.observation_uid, "produced", link.evidence_uid):
+        return Err("workflow_release_missing_edge")
+    # Authentication binds ALL link fields and complete graph provenance,
+    # including actual build/verification/release receipts and input identity.
+    if not authority.authenticate(link, graph): return Err("trace_unchecked")
+    Ok(true)
+
+pub fn check_workflow_release_link(graph: TraceGraphV1, link: WorkflowReleaseLinkV1,
+    authority: WorkflowReleaseTraceAuthorityV1) -> Result<bool, text>:
+    if not authority.authorize(link.authority_scope, link.run_id): return Err("workflow_unauthorized")
+    match trace_graph_validate_v1(graph, trace_graph_codec_limits_v1()):
+        case Ok(valid):
+            if not valid: return Err("trace_invalid_graph")
+        case Err(issue): return Err("trace_invalid_graph:" + issue.code)
+    release_trace_checked(graph, link, authority)
+
+pub fn query_workflow_release_trace(graph: TraceGraphV1, links: [WorkflowReleaseLinkV1],
+    query: WorkflowReleaseTraceQueryV1, authority: WorkflowReleaseTraceAuthorityV1) -> Result<[WorkflowReleaseLinkV1], text>:
+    if not authority.authorize(query.authority_scope, query.run_id): return Err("workflow_unauthorized")
+    if query.max_work < 1 or query.max_results < 1: return Err("trace_quota_exceeded")
+    if query.direction != "forward" and query.direction != "reverse": return Err("trace_invalid_direction")
+    if not ["requirement", "criterion", "symbol", "test", "build", "release", "link"].contains(query.entity_kind): return Err("workflow_release_query_kind")
+    if not lifecycle_has_text(query.identity) or not lifecycle_revision(query.source_revision) or not lifecycle_hex(query.policy_sha256, 64):
+        return Err("workflow_context_mismatch")
+    val graph_size = graph.nodes.len() + graph.edges.len() + graph.edge_origins.len() +
+        graph.inputs.len() + graph.test_definitions.len() + graph.locators.len() + 1
+    if graph_size > query.max_work or links.len() + 1 > query.max_work / graph_size / 16: return Err("trace_quota_exceeded")
+    var limits = trace_graph_codec_limits_v1()
+    if query.max_work < limits.max_records: limits.max_records = query.max_work
+    match trace_graph_validate_v1(graph, limits):
+        case Ok(valid):
+            if not valid: return Err("trace_invalid_graph")
+        case Err(issue): return Err("trace_invalid_graph:" + issue.code)
+    var result: [WorkflowReleaseLinkV1] = []
+    var seen: Dict<text, bool> = {}
+    for link in links:
+        if not authority.authorize(link.authority_scope, link.run_id): return Err("workflow_unauthorized")
+        if link.authority_scope != query.authority_scope or link.run_id != query.run_id or link.source_revision != query.source_revision or link.policy_sha256 != query.policy_sha256:
+            return Err("workflow_context_mismatch")
+        if seen.contains_key(link.uid): return Err("trace_duplicate_uid")
+        seen[link.uid] = true
+        release_trace_checked(graph, link, authority)?
+        var identity = link.uid
+        match query.entity_kind:
+            case "requirement": identity = link.requirement_uid
+            case "criterion": identity = link.criterion_uid
+            case "symbol": identity = link.symbol_uid
+            case "test": identity = link.test_uid
+            case "build": identity = link.build_sha256
+            case "release": identity = link.release_sha256
+            case "link": identity = link.uid
+        if identity == query.identity:
+            if result.len() >= query.max_results: return Err("trace_quota_exceeded")
+            result.push(link)
+    # Both directions return the same authenticated complete identity chain;
+    # callers can project it in either orientation without inferred links.
+    Ok(result)

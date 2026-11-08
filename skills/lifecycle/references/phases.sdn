@@ -1,0 +1,30 @@
+schema: spipe-lifecycle-phase-map/1
+status: canonical_routing_not_runtime_admission
+states: [proposed, investigating, defined, designed, test_ready, implementing, verifying, releasable, released, observing, closed]
+exceptional_states: [blocked, rework, abandoned, rolled_back]
+gate_results: [pass, fail, waived, not_applicable]
+phase_ids: [requirements.analysis, discovery.research, discovery.exploration, requirements.harden, risk.plan, architecture.design, plan.harden, acceptance.bdd, implementation.tdd, review.code, nfr.validate, release.verify, release.manage, incident.operate, retrospective.prevent, learning.evaluate]
+roles: [requirements-analyst, researcher, repo-explorer, requirements-reviewer, risk-analyst, architect, plan-reviewer, acceptance-test-author, implementer, reviewer, nfr-reviewer, trace-auditor, release-manager, incident-commander, process-maintainer, model-evaluator]
+legacy_mapping:
+  research: [discovery.research, discovery.exploration]
+  design: [architecture.design, plan.harden]
+  impl: [acceptance.bdd, implementation.tdd, review.code]
+  verify: [nfr.validate, release.verify]
+  release: [release.manage]
+  bug_review: [incident.operate, retrospective.prevent]
+  spipe_loop: [implementation.tdd, review.code]
+sstack_mapping:
+  intake: [requirements.analysis, requirements.harden, risk.plan]
+  research: [discovery.research, discovery.exploration]
+  design: [architecture.design, plan.harden]
+  specification: [acceptance.bdd]
+  implementation: [implementation.tdd]
+  refactor: [review.code]
+  verification: [nfr.validate, release.verify]
+  ship: [release.manage]
+authority:
+  production_mutation: require_explicit_operator_authority
+  dump_export: denied_without_explicit_scope_and_receipt
+  model_training: not_granted
+  model_promotion: not_granted
+  release_publication: not_granted
